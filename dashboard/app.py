@@ -614,6 +614,28 @@ def page_about(gate: bool) -> None:
             st.rerun()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# FOR COFOUNDERS  (run-your-own guide, rendered from COFOUNDERS.md)
+# ══════════════════════════════════════════════════════════════════════════════
+def page_cofounders() -> None:
+    st.title("👥 For cofounders — run your own")
+    st.caption("How to run your own simulations, billed to your own API keys. "
+               "Each person runs locally with their own keys; results publish to a shared link.")
+    for fname in ("COFOUNDERS.md", "DEPLOY.md"):
+        path = ROOT / fname
+        try:
+            text = path.read_text()
+        except Exception:
+            continue
+        if fname == "DEPLOY.md":
+            with st.expander("📡 Deploying / sharing the dashboard (DEPLOY.md)"):
+                st.markdown(text)
+        else:
+            st.markdown(text)
+    st.divider()
+    st.caption("Full source + these docs live in the GitHub repo.")
+
+
 # ── router ────────────────────────────────────────────────────────────────────
 st.sidebar.title("🧭 Sim Harness")
 
@@ -622,7 +644,8 @@ if not st.session_state.get("entered"):
     page_about(gate=True)
     st.stop()
 
-page = st.sidebar.radio("View", ["📊 Results", "⚙️ Configure", "📈 Trends", "ℹ️ About"], label_visibility="collapsed")
+page = st.sidebar.radio("View", ["📊 Results", "⚙️ Configure", "📈 Trends", "👥 Cofounders", "ℹ️ About"],
+                        label_visibility="collapsed")
 st.sidebar.divider()
 _store = Store(DB_PATH)
 if page.startswith("📊"):
@@ -631,5 +654,7 @@ elif page.startswith("⚙️"):
     page_configure()
 elif page.startswith("📈"):
     page_trends(_store)
+elif page.startswith("👥"):
+    page_cofounders()
 else:
     page_about(gate=False)
