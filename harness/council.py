@@ -67,7 +67,7 @@ async def generate_brief(model: str, persona: str, channel: str, intent_type: st
     d = safe_json(text) or {}
     return {
         "intent": d.get("intent") or d.get("verbatim_request") or f"({model} returned no intent)",
-        "channel": d.get("channel", channel),
+        "channel": channel,  # force the requested channel — the model sometimes invents invalid ones (e.g. "facebook")
         "intent_type": d.get("intent_type", intent_type),
         "voice_mode": d.get("voice_mode", "light"),
         "verbatim_request": d.get("verbatim_request"),
