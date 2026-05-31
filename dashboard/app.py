@@ -154,10 +154,10 @@ ABOUT_HTML = """
   models scored it on which criterion, with their verdicts and concrete suggestions.</p>
   <p>Everything else is supporting context. <strong>Overview &amp; issues</strong> has the headline numbers (how
   many tested, how many flagged, average quality, cost) and groups every problem into plain-English issues
-  ranked by how serious and how frequent. <strong>Change settings &amp; re-run</strong> lets you edit the
-  reviewers, checks, and budgets without touching code. <strong>Run your own (cofounders)</strong> is the
-  step-by-step for a teammate to run it with their own keys. Nowhere does anything rewrite a draft &mdash; the
-  platform reviews what Grok produced and tells your team how to make it better.</p>
+  ranked by how serious and how frequent. <strong>Run your own (cofounders)</strong> is the step-by-step for a
+  teammate to run their own copy with their own keys, including how to configure the models, target segments,
+  and reviewer criteria for their campaign. Nowhere does anything rewrite a draft &mdash; the platform reviews
+  what Grok produced and tells your team how to make it better.</p>
 
   <p style="margin-top:1.4em;"><strong>In short:</strong> this platform exercises Resonate the way thousands of
   real campaigns would, judges what comes out with a diverse and independent panel, and hands you the results
@@ -346,7 +346,7 @@ def page_results(store: Store) -> None:
         f"**${rev:.2f}** across the five reviewers"
         + (f" ({permodel})" if permodel else "")
         + ". Each provider bills to your own keys, and hard caps stop a run before it can exceed your limits. "
-        "To price a different run, use **Change settings & re-run**.")
+        "To price a different run, see the estimator under **Run your own (cofounders)**.")
 
     rv_all = reviews_of(df)
     improves = list(dict.fromkeys(s for s in (rv_all["improve"].tolist() if not rv_all.empty else [])
@@ -568,8 +568,31 @@ def page_about(gate: bool) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 def page_cofounders() -> None:
     st.title("👥 For cofounders — run your own")
-    st.caption("How to run your own simulations, billed to your own API keys. "
-               "Each person runs locally with their own keys; results publish to a shared link.")
+    st.caption("Each cofounder runs their own copy with their own API keys (never the shared link above), and "
+               "publishes results to a link they control.")
+
+    st.subheader("How to configure it for your campaign")
+    st.markdown(
+        "Everything is set in one plain-text config file (`configs/your-campaign.toml`) — no code:\n\n"
+        "- **The five models.** Under `[council] models`, list the five models that make up the review council "
+        "(Claude, GPT, Gemini, Grok, Kimi by default). Swap in flagship variants for sharper — and pricier — "
+        "reviews. They automatically rotate across the three criteria, so every model judges every criterion.\n"
+        "- **The target segments.** The council scores each message *for the voter group it's written for*. Edit "
+        "the segment list (e.g. Latino voters, union households, suburban swing women) so the simulated requests "
+        "are tailored to the groups your campaign actually targets — a message is judged on how well it lands "
+        "for its group, never watered down to appeal to everyone.\n"
+        "- **The reviewers / criteria.** Under `[[jobs]]`, edit the three criteria and how strict each is — raise "
+        "the bar on the safety guardrail, or rewrite the 'tailoring' standard in your own words. You can also "
+        "change which channels and request types are tested under `[matrix]`, and set hard spending caps per "
+        "model under `[budgets]`.\n\n"
+        "In short: the **models** are your panel, the **target segments** are who each message is for, and the "
+        "**criteria** are what “good” means — all editable in the config, then run with the command in "
+        "the runbook below.")
+
+    st.subheader("Estimate what a run will cost")
+    cost_estimator()
+
+    st.subheader("Step-by-step runbook")
     for fname in ("COFOUNDERS.md", "DEPLOY.md"):
         path = ROOT / fname
         try:
@@ -577,11 +600,10 @@ def page_cofounders() -> None:
         except Exception:
             continue
         if fname == "DEPLOY.md":
-            with st.expander("📡 Deploying / sharing the dashboard (DEPLOY.md)"):
+            with st.expander("📡 Deploying / sharing your own dashboard (DEPLOY.md)"):
                 st.markdown(text)
         else:
             st.markdown(text)
-    st.divider()
     st.caption("Full source + these docs live in the GitHub repo.")
 
 
@@ -819,7 +841,6 @@ st.sidebar.caption("Start here →")
 page = st.sidebar.radio("View", [
     "📨 Simulated messages",
     "📋 Overview & issues",
-    "🎛 Change settings & re-run",
     "👥 Run your own (cofounders)",
     "ℹ️ About this platform",
 ], label_visibility="collapsed")
@@ -829,8 +850,6 @@ if page.startswith("📨"):
     page_messages(_store)
 elif page.startswith("📋"):
     page_results(_store)
-elif page.startswith("🎛"):
-    page_configure()
 elif page.startswith("👥"):
     page_cofounders()
 else:
