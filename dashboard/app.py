@@ -677,9 +677,17 @@ def _short(s, n: int = 72) -> str:
 def page_messages(store: Store) -> None:
     runs = store.list_runs()
     st.title("📨 Simulated messages")
-    st.caption("Every message in the run — what the campaign asked, the questions Resonate asked back, the "
-               "message Grok wrote, whether we flagged it, where in Resonate it came from, and how the five "
-               "models scored it. Click any row for the full story.")
+    st.markdown(
+        "We ran thousands of realistic campaign requests through Resonate — across every chat interface and "
+        "channel it offers (email, SMS, speeches, mail, radio, TV, social) — and let the platform draft each one "
+        "exactly as it would for a real customer. Every draft was then read by a council of **five models** "
+        "(Claude, GPT, Gemini, Grok, Kimi) that rotate across **three criteria** — is the message *powerful*, is "
+        "it genuinely *tailored* to its target voters, and is it *safe to ship* — each scoring it 0–100 for the "
+        "group it was written for. **The table below is the result: one row per simulated message.** As the "
+        "people responsible for optimizing the platform, the columns to watch are **Flagged?** (what needs a "
+        "human) and **Where** (which surface is producing the misses); **sort by flagged** to put the must-fix "
+        "items on top, and **click any row** to see the full request, the platform's follow-up questions, the "
+        "message itself, and exactly how each model scored it.")
     if not runs:
         st.warning("No runs yet.")
         return
