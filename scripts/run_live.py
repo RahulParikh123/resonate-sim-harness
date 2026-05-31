@@ -56,6 +56,7 @@ async def main() -> int:
     ap.add_argument("--council", action="store_true", help="generate varied campaign requests with models (needs keys)")
     ap.add_argument("--preflight", action="store_true", help="run the platform's clarifying-question flow + record Q&A")
     ap.add_argument("--review", action="store_true", help="run the review council over each Grok draft (needs keys)")
+    ap.add_argument("--publish", action="store_true", help="after the run, push results to the hosted dashboard link")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -234,6 +235,10 @@ async def main() -> int:
     print_breakdowns(verdicts)
     print_legend()
     print()
+    if args.publish:
+        import subprocess
+        print("  publishing results to the hosted dashboard link…")
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "publish.py")])
     return 0
 
 

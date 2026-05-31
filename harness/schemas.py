@@ -63,8 +63,10 @@ class SimResult:
     preflight_qa: list = field(default_factory=list)  # [{"q": ..., "a": ...}, …]
     refused: bool = False
     produced_composer_draft: bool = True  # did a draft actually land in the composer?
-    advisory_flags: list[str] = field(default_factory=list)
-    stance_drift_score: float | None = None
+    advisory_flags: list = field(default_factory=list)  # backend codes: [{code, severity, note}, …]
+    stance_drift_score: float | None = None  # 0–1, the platform's own drift-from-stance signal
+    stance_drift_method: str | None = None   # how the backend computed it (e.g. embedding vs llm)
+    messenger_recommendation: list = field(default_factory=list)  # backend Messenger Recommender top-k surrogates
     # Filled by the review council (live mode): [{reviewer, score, verdict, concern, improve}, …]
     reviews: list = field(default_factory=list)
     quality_score: float | None = None  # aggregate of reviewer scores, 0–100
@@ -87,6 +89,8 @@ class SimResult:
             produced_composer_draft=bool(d.get("produced_composer_draft", True)),
             advisory_flags=list(d.get("advisory_flags") or []),
             stance_drift_score=d.get("stance_drift_score"),
+            stance_drift_method=d.get("stance_drift_method"),
+            messenger_recommendation=list(d.get("messenger_recommendation") or []),
             reviews=list(d.get("reviews") or []),
             quality_score=d.get("quality_score"),
         )

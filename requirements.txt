@@ -1,0 +1,7 @@
+# Dependencies for the HOSTED dashboard (Streamlit Community Cloud).
+# The dashboard only reads results (dashboard/published.db) + renders them, so it needs
+# far less than the local runner. The runner's heavier deps (httpx, litellm, psycopg)
+# are installed separately into the local venv by setup.sh and are NOT needed here.
+streamlit>=1.40
+pandas>=2.0
+tomli-w>=1.0

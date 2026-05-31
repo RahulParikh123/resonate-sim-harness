@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 *.db
 *.sqlite
+# …but DO commit the published snapshot the hosted dashboard reads (results only, no secrets):
+!dashboard/published.db
 .artifacts/
 runs/
 .DS_Store

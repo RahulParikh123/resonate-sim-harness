@@ -30,7 +30,18 @@ from harness.labels import (  # noqa: E402
 )
 from harness.store import Store  # noqa: E402
 
-DB_PATH = os.environ.get("HARNESS_DB", str(ROOT / "runs" / "harness.db"))
+def _resolve_db() -> str:
+    """Local runs use runs/harness.db. On the hosted (Streamlit Cloud) dashboard that
+    file isn't in the repo, so fall back to the committed snapshot dashboard/published.db
+    (refreshed by scripts/publish.py). HARNESS_DB overrides everything."""
+    env = os.environ.get("HARNESS_DB")
+    if env:
+        return env
+    live = ROOT / "runs" / "harness.db"
+    return str(live if live.exists() else ROOT / "dashboard" / "published.db")
+
+
+DB_PATH = _resolve_db()
 CONFIG_DIR = ROOT / "configs"
 SEV_EMOJI = {"critical": "⛔", "high": "🔴", "medium": "🟠", "low": "🟡", "pass": "✅"}
 

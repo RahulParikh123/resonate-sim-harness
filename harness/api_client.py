@@ -183,4 +183,6 @@ class ResonateClient:
             refused=bool(d.get("refused", False)),
             advisory_flags=list(d.get("advisory_flags") or []),
             stance_drift_score=d.get("stance_drift_score"),
+            stance_drift_method=d.get("stance_drift_method"),
+            messenger_recommendation=list(d.get("messenger_recommendation") or []),
         )
