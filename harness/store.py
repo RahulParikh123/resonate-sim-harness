@@ -19,8 +19,9 @@ CREATE TABLE IF NOT EXISTS runs(
   sim_count INTEGER, flagged INTEGER, config TEXT);
 CREATE TABLE IF NOT EXISTS sims(
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, sim_id TEXT, channel TEXT,
-  intent_type TEXT, model TEXT, persona TEXT, surface TEXT, target_segment TEXT, content_text TEXT,
-  quality_score REAL, reviews_json TEXT, preflight_qa_json TEXT, severity TEXT, finding_count INTEGER);
+  intent_type TEXT, model TEXT, persona TEXT, surface TEXT, target_segment TEXT, brief_intent TEXT,
+  content_text TEXT, quality_score REAL, reviews_json TEXT, preflight_qa_json TEXT, severity TEXT,
+  finding_count INTEGER);
 CREATE TABLE IF NOT EXISTS findings(
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, sim_id TEXT, dimension TEXT,
   severity TEXT, source TEXT, detail TEXT, evidence TEXT);
@@ -37,7 +38,7 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(_SCHEMA)
         # Lightweight migrations for DBs created before these columns existed.
-        for col in ("target_segment TEXT", "content_text TEXT"):
+        for col in ("target_segment TEXT", "content_text TEXT", "brief_intent TEXT"):
             try:
                 self.db.execute(f"ALTER TABLE sims ADD COLUMN {col}")
             except Exception:
@@ -55,11 +56,11 @@ class Store:
         for v in verdicts:
             cur.execute(
                 "INSERT INTO sims(run_id,sim_id,channel,intent_type,model,persona,surface,target_segment,"
-                "content_text,quality_score,reviews_json,preflight_qa_json,severity,finding_count) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "brief_intent,content_text,quality_score,reviews_json,preflight_qa_json,severity,finding_count) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (run_id, v.sim_id, v.channel, v.intent_type, v.model, v.persona, v.surface, v.target_segment,
-                 v.content_text, v.quality_score, json.dumps(v.reviews or []), json.dumps(v.preflight_qa or []),
-                 v.severity.value if v.severity else "pass", len(v.findings)),
+                 v.brief_intent, v.content_text, v.quality_score, json.dumps(v.reviews or []),
+                 json.dumps(v.preflight_qa or []), v.severity.value if v.severity else "pass", len(v.findings)),
             )
             for f in v.findings:
                 cur.execute(

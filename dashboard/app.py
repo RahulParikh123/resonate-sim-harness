@@ -372,10 +372,14 @@ def page_results(store: Store) -> None:
     if not view.empty:
         view = view.reset_index(drop=True)
         view["Message"] = [f"Message {i + 1}" for i in range(len(view))]
+        def _preview(s):
+            s = str(s or "")
+            return (s[:70] + "…") if len(s) > 70 else (s or "—")
         disp = pd.DataFrame({
             "Message": view["Message"],
             "Surface": view["surface"].replace("", "—") if "surface" in view.columns else "—",
             "Target": view["target_segment"].replace("", "—") if "target_segment" in view.columns else "—",
+            "Input question": view["brief_intent"].map(_preview) if "brief_intent" in view.columns else "—",
             "Result": view["severity"].map(humanize_severity),
             "Quality": view["quality_score"].map(lambda x: f"{int(x)}/100" if pd.notna(x) else "—")
             if "quality_score" in view.columns else "—",
@@ -392,21 +396,28 @@ def page_results(store: Store) -> None:
             srow = view[view["sim_id"] == sid].iloc[0]
             seg = srow.get("target_segment") or "—"
             q = srow.get("quality_score")
-            st.markdown(f"**{pick}** · {humanize_channel(srow['channel'])} · {humanize_intent(srow['intent_type'])} · "
-                        f"target: **{seg}** · result: {humanize_severity(srow['severity'])}"
+            st.markdown(f"### {pick} — {humanize_severity(srow['severity'])}"
                         + (f" · quality {int(q)}/100" if pd.notna(q) else ""))
-            st.markdown("**📄 The message Grok produced**")
-            body = (srow.get("content_text") or "").strip()
-            st.code(body if body else "(no draft text stored for this message)", language=None)
+            m1, m2, m3 = st.columns(3)
+            m1.markdown(f"**🗂 Surface (where in Resonate)**  \n{srow.get('surface') or '—'}")
+            m2.markdown(f"**🎯 Target segment**  \n{seg}")
+            m3.markdown(f"**📡 Channel / request**  \n{humanize_channel(srow['channel'])} · {humanize_intent(srow['intent_type'])}")
+            st.markdown("**1 · Input question — what the campaign asked for**")
+            st.info(srow.get("brief_intent") or "—")
             try:
                 qa = json.loads(srow.get("preflight_qa_json") or "[]")
             except Exception:
                 qa = []
+            st.markdown("**2 · Follow-up questions the platform asked (and the answers)**")
             if qa:
-                st.markdown("**Clarifying questions the platform asked first**")
                 for x in qa:
                     st.markdown(f"- *{x.get('q', '')}* → {x.get('a', '')}")
-            st.markdown("**Objective checks**")
+            else:
+                st.caption("The platform asked no clarifying questions before drafting.")
+            st.markdown("**3 · The message Grok produced**")
+            body = (srow.get("content_text") or "").strip()
+            st.code(body if body else "(no draft text stored for this message)", language=None)
+            st.markdown("**4 · Objective checks**")
             obj = find_df[(find_df["sim_id"] == sid) & (find_df["dimension"] != "reviewer_concern")] \
                 if not find_df.empty else pd.DataFrame()
             if obj.empty:
@@ -414,7 +425,7 @@ def page_results(store: Store) -> None:
             for _, r in obj.iterrows():
                 st.markdown(f"- {SEV_EMOJI.get(r['severity'], '')} **{label(r['dimension'])}** — {r['detail']}"
                             + (f"  \n  ↳ {r['evidence']}" if r["evidence"] else ""))
-            st.markdown("**Reviewer scores & suggestions**")
+            st.markdown("**5 · Reviewer scores & suggestions** (5 models, rotating across the 3 axes)")
             rv1 = reviews_of(view)
             rv1 = rv1[rv1["sim_id"] == sid] if not rv1.empty else rv1
             if rv1.empty:
@@ -651,6 +662,138 @@ def page_cofounders() -> None:
     st.caption("Full source + these docs live in the GitHub repo.")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# SIMULATED MESSAGES  (THE core view — every message, end to end, plain English)
+# ══════════════════════════════════════════════════════════════════════════════
+_FLAG = {"critical": "🚩 Must-fix", "high": "⚠️ Review", "medium": "Minor note",
+         "low": "Minor note", "pass": "✓ Clean"}
+
+
+def _short(s, n: int = 72) -> str:
+    s = str(s or "").replace("\n", " ").strip()
+    return (s[: n - 1] + "…") if len(s) > n else (s or "—")
+
+
+def page_messages(store: Store) -> None:
+    runs = store.list_runs()
+    st.title("📨 Simulated messages")
+    st.caption("Every message in the run — what the campaign asked, the questions Resonate asked back, the "
+               "message Grok wrote, whether we flagged it, where in Resonate it came from, and how the five "
+               "models scored it. Click any row for the full story.")
+    if not runs:
+        st.warning("No runs yet.")
+        return
+    runs = sorted(runs, key=lambda r: r["id"], reverse=True)
+    run_labels = {f"Run {r['id']} · {r['sim_count']} messages": r for r in runs}
+    run = run_labels[st.sidebar.selectbox("Run", list(run_labels))]
+    sims, findings, _ = load(run["id"])
+    df, find_df = pd.DataFrame(sims), pd.DataFrame(findings)
+    if df.empty:
+        st.info("No messages in this run.")
+        return
+    df = df.reset_index(drop=True)
+    df["Message"] = [f"Message {i + 1}" for i in range(len(df))]
+    for c in ("surface", "target_segment", "brief_intent", "content_text"):
+        if c not in df.columns:
+            df[c] = ""
+
+    st.sidebar.subheader("Filter")
+    only_flag = st.sidebar.checkbox("Only flagged (must-fix + review)")
+    f_surf = st.sidebar.multiselect("Resonate surface", sorted(df["surface"].replace("", "—").unique()))
+    f_seg = st.sidebar.multiselect("Target voters", sorted(df["target_segment"].replace("", "—").unique()))
+    v = df.copy()
+    if only_flag:
+        v = v[v["severity"].isin(["critical", "high"])]
+    if f_surf:
+        v = v[v["surface"].replace("", "—").isin(f_surf)]
+    if f_seg:
+        v = v[v["target_segment"].replace("", "—").isin(f_seg)]
+
+    sort_by = st.sidebar.selectbox("Sort by", ["Flagged first (most serious)", "Lowest quality first", "Message order"])
+    if sort_by.startswith("Flagged"):
+        rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "pass": 0}
+        v = v.assign(_r=v["severity"].map(rank).fillna(0)).sort_values("_r", ascending=False).drop(columns="_r")
+    elif sort_by.startswith("Lowest"):
+        v = v.sort_values("quality_score", ascending=True, na_position="first")
+
+    crit = int((df["severity"] == "critical").sum())
+    rev = int((df["severity"] == "high").sum())
+    a, b, c, d = st.columns(4)
+    a.metric("Messages", len(df))
+    b.metric("🚩 Must-fix", crit, f"{round(100 * crit / len(df))}% of run", delta_color="off")
+    c.metric("⚠️ Needs review", rev, f"{round(100 * rev / len(df))}% of run", delta_color="off")
+    d.metric("Showing", len(v))
+
+    table = pd.DataFrame({
+        "Message": v["Message"],
+        "Where (Resonate surface)": v["surface"].replace("", "—"),
+        "What was asked": v["brief_intent"].map(_short),
+        "Target voters": v["target_segment"].replace("", "—"),
+        "What Grok wrote": v["content_text"].map(_short),
+        "Flagged?": v["severity"].map(lambda s: _FLAG.get(s, "—")),
+        "Quality": v["quality_score"].map(lambda x: f"{int(x)}/100" if pd.notna(x) else "—"),
+    })
+    st.dataframe(table, use_container_width=True, hide_index=True, height=430)
+
+    idmap = dict(zip(v["Message"], v["sim_id"]))
+    pick = st.selectbox("🔍 Open a message for the full story", ["—"] + list(v["Message"]))
+    if pick == "—":
+        return
+    srow = v[v["sim_id"] == idmap[pick]].iloc[0]
+    sid, secv, q = idmap[pick], srow["severity"], srow.get("quality_score")
+    st.markdown(f"### {pick}")
+    m1, m2, m3 = st.columns(3)
+    m1.markdown(f"**🗂 Where in Resonate**  \n{srow.get('surface') or '—'}")
+    m2.markdown(f"**🎯 Target voters**  \n{srow.get('target_segment') or '—'}")
+    m3.markdown(f"**📡 Channel · request**  \n{humanize_channel(srow['channel'])} · {humanize_intent(srow['intent_type'])}")
+
+    reason = ""
+    if not find_df.empty:
+        mine = find_df[(find_df["sim_id"] == sid) & (find_df["severity"].isin(["critical", "high"]))]
+        if not mine.empty:
+            reason = "  ·  ".join(mine["detail"].head(3).astype(str).tolist())
+    if secv == "critical":
+        st.error(f"🚩 **Flagged — must fix before shipping.**  {reason}")
+    elif secv == "high":
+        st.warning(f"⚠️ **Flagged for review.**  {reason}")
+    else:
+        st.success("✓ **Not flagged** — no serious issues found.")
+
+    st.markdown("**1 · What the campaign asked for**")
+    st.info(srow.get("brief_intent") or "—")
+    try:
+        qa = json.loads(srow.get("preflight_qa_json") or "[]")
+    except Exception:
+        qa = []
+    st.markdown("**2 · Questions Resonate asked back (and the answers)**")
+    if qa:
+        for x in qa:
+            st.markdown(f"- *{x.get('q', '')}* → {x.get('a', '')}")
+    else:
+        st.caption("Resonate asked no clarifying questions before drafting.")
+    st.markdown("**3 · The message Grok produced**" + (f"  ·  quality {int(q)}/100" if pd.notna(q) else ""))
+    st.code((srow.get("content_text") or "").strip() or "(no draft text stored)", language=None)
+
+    st.markdown("**4 · How the five models scored it** — each rotates across the three criteria")
+    try:
+        revs = json.loads(srow.get("reviews_json") or "[]")
+    except Exception:
+        revs = []
+    if revs:
+        vd = {"meets": "✅ meets", "concern": "🟠 concern", "fail": "🔴 fails"}
+        rtab = pd.DataFrame([{
+            "Criterion reviewed": r.get("reviewer") or "—",
+            "Model that scored it": model_label(r.get("model")),
+            "Score": f"{int(r['score'])}/100" if isinstance(r.get("score"), (int, float)) else "—",
+            "Verdict": vd.get(r.get("verdict"), "—"),
+            "What they flagged": r.get("concern") or "—",
+            "How to make it better": r.get("improve") or "—",
+        } for r in revs])
+        st.dataframe(rtab, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No reviewer scores for this message.")
+
+
 # ── router ────────────────────────────────────────────────────────────────────
 st.sidebar.title("🧭 Sim Harness")
 
@@ -659,16 +802,22 @@ if not st.session_state.get("entered"):
     page_about(gate=True)
     st.stop()
 
-page = st.sidebar.radio("View", ["📊 Results", "⚙️ Configure", "📈 Trends", "👥 Cofounders", "ℹ️ About"],
-                        label_visibility="collapsed")
+st.sidebar.caption("Start here →")
+page = st.sidebar.radio("View", [
+    "📨 Simulated messages",
+    "📋 Overview & issues",
+    "🎛 Change settings & re-run",
+    "👥 Run your own (cofounders)",
+    "ℹ️ About this platform",
+], label_visibility="collapsed")
 st.sidebar.divider()
 _store = Store(DB_PATH)
-if page.startswith("📊"):
+if page.startswith("📨"):
+    page_messages(_store)
+elif page.startswith("📋"):
     page_results(_store)
-elif page.startswith("⚙️"):
+elif page.startswith("🎛"):
     page_configure()
-elif page.startswith("📈"):
-    page_trends(_store)
 elif page.startswith("👥"):
     page_cofounders()
 else:

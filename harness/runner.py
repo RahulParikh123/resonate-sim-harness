@@ -44,7 +44,8 @@ def score_sim(sim: SimResult, rubric: RubricConfig | None = None) -> SimVerdict:
         findings += reviews_to_findings(sim.reviews)
     return SimVerdict(sim.id, sim.channel, sim.intent_type, apply_rubric(findings, rubric),
                       model=sim.model, persona=sim.persona, surface=sim.surface,
-                      target_segment=sim.target_segment, content_text=sim.content_text,
+                      target_segment=sim.target_segment, brief_intent=sim.brief_intent,
+                      content_text=sim.content_text,
                       quality_score=sim.quality_score, reviews=sim.reviews, preflight_qa=sim.preflight_qa)
 
 
