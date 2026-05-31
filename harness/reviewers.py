@@ -1,11 +1,16 @@
-"""The review council — diverse models, each PROXYING a point of view (mostly the
-voters a message is trying to reach), judging the draft Grok produced.
+"""The review council — five models rotating across three scoring AXES, judging the
+draft Grok produced FOR ITS TARGET SEGMENT.
 
-Reviewers REVIEW; they never rewrite. Each one judges broadly — not just the final
-text, but whether the platform asked the right questions and gathered the right
-context — and answers the overriding question: is this the BEST possible message
-for my point of view, and if not, how should it improve? Each returns a 0–100
-score (reward), an optional concern (risk), and one concrete improvement.
+The axes (the methodology the team settled on):
+  1. Message power — how strong/compelling the message is for its target.
+  2. Tailoring to the target — does it genuinely land for that specific group.
+  3. Safety guardrail — heinous / cringe / usable-against-you-if-it-leaks.
+
+(1) and (2) are REWARD axes: strengthen the message for its target, never soften it to
+court non-recipients — they feed the headline score. (3) is a GATE: a safety problem
+caps the score no matter how good the copy reads. Reviewers REVIEW; they never rewrite.
+Each returns a 0–100 score on its axis, a verdict, an optional concern, and one concrete
+improvement, grounded in the platform's own signals.
 """
 
 from __future__ import annotations
@@ -21,22 +26,27 @@ _VERDICT_SEVERITY = {"fail": Severity.HIGH, "concern": Severity.MEDIUM, "meets":
 
 
 def _system(rv: Reviewer) -> str:
+    guard = getattr(rv, "role", "reward") == "guardrail"
+    principle = (
+        "As the guardrail you DO weigh broad blowback: judge how this could read to ANYONE — opponents, the "
+        "press, other groups — because any message can leak. Score down real liabilities; a clean message "
+        "scores high.\n" if guard else
+        "A campaign deliberately makes a message hit hard for its TARGET and does NOT soften it to appeal to "
+        "people who will never receive it. Do not lower the score just because it wouldn't land for other "
+        "groups — that is correct tailoring, not a flaw.\n"
+    )
     return (
-        f'You are "{rv.name}", a reviewer on a campaign-messaging QA panel. You PROXY this point of view:\n'
+        f'You are the "{rv.name}" reviewer on a campaign-messaging QA panel. You score exactly ONE axis:\n'
         f"{rv.criteria}\n\n"
-        "You do NOT rewrite, redraft, or write replacement copy — you only review and score.\n"
-        "Judge BROADLY, not narrowly: weigh the final draft AND whether the platform asked the right "
-        "clarifying questions and gathered the right context to make this the best possible message for your "
-        "point of view. Do not assume the questions it asked were the right ones.\n"
-        "GROUND your score in the platform's OWN signals shown below — its stance-drift score, the advisory "
-        "flags it raised, and its recommended messengers. These are exactly what Resonate itself grades a draft "
-        "on. A high stance-drift score or a high-severity advisory flag MUST pull your score down even if the "
-        "copy reads well; clean signals support a higher score. Combine those signals with your point of view.\n"
-        "Your overriding question: from your point of view, is this the BEST possible message — and if not, "
-        "how should it improve?\n"
-        'Return ONLY strict JSON: {"score": <integer 0-100, how good this message is for your POV>, '
-        '"verdict": "meets" | "concern" | "fail", "concern": "<one sentence on any real risk or problem, or '
-        'empty>", "improve": "<one concrete, specific way to make it better for your POV>"}'
+        "You do NOT rewrite or redraft — you only review and score, and you stay strictly on YOUR axis "
+        "(other reviewers cover the rest).\n"
+        "This message is tailored to a SPECIFIC TARGET SEGMENT, named below — judge it FOR THAT SEGMENT.\n"
+        + principle +
+        "Factor in the platform's OWN signals shown below (stance-drift score, advisory flags, recommended "
+        "messengers) — what Resonate itself grades on — alongside your axis.\n"
+        'Return ONLY strict JSON: {"score": <integer 0-100 on your axis>, "verdict": "meets" | "concern" | '
+        '"fail", "concern": "<one sentence naming any real problem on your axis, or empty>", '
+        '"improve": "<one concrete, specific way to make it better on your axis>"}'
     )
 
 
@@ -78,14 +88,16 @@ def _platform_signals(sim: SimResult) -> str:
 def _user(sim: SimResult) -> str:
     spoken = " (a SPEECH — judge it as it would sound read aloud, in the speech's context)" \
         if sim.channel.lower() in ("speech", "speeches / docs", "press") else ""
+    seg = sim.target_segment or "the campaign's general audience (a uniform message to everyone)"
     return (
+        f"TARGET SEGMENT — score the message FOR this group: {seg}\n"
         f"Channel: {sim.channel}{spoken}\n"
         f"What the campaign originally asked for: {sim.brief_intent}\n\n"
         f"Clarifying questions the platform asked, and the answers it got:\n{_format_qa(sim)}\n\n"
         f"Facts the operator supplied: {sim.brief_context or 'none'}\n\n"
         f"The draft Grok produced:\n{sim.content_text}\n\n"
         f"The platform's own signals for this draft (what Resonate grades on):\n{_platform_signals(sim)}\n\n"
-        "Review and score it from your point of view, grounded in those platform signals."
+        "Score it on your axis, for the target segment, grounded in those platform signals."
     )
 
 
@@ -107,8 +119,9 @@ async def review_draft(sim: SimResult, reviewers: list[Reviewer], budget: Budget
             text, _ = await acomplete(rv.model, _system(rv), _user(sim), budget=budget, json_mode=True, temperature=0.2)
             d = safe_json(text) or {}
             return {
-                "reviewer": rv.name,          # the JOB (point of view)
-                "model": rv.model,            # the MODEL that played it this simulation
+                "reviewer": rv.name,          # the AXIS (power / tailoring / guardrail)
+                "model": rv.model,            # the MODEL that scored it this simulation
+                "role": getattr(rv, "role", "reward"),  # reward (feeds headline) | guardrail (gate)
                 "score": _clip(d.get("score")),
                 "verdict": str(d.get("verdict", "meets")).lower(),
                 "concern": (d.get("concern") or "").strip(),
@@ -121,18 +134,38 @@ async def review_draft(sim: SimResult, reviewers: list[Reviewer], budget: Budget
 
 
 def reviews_to_findings(reviews: list[dict]) -> list[Finding]:
-    """Turn reviewer concerns/fails into flags for the triage view (the punishment side)."""
+    """Turn concerns/fails into flags. A guardrail (safety) issue outranks a reward-axis one."""
     out: list[Finding] = []
     for r in reviews:
-        sev = _VERDICT_SEVERITY.get(r.get("verdict", "meets"))
-        if sev is None:
+        verdict = r.get("verdict", "meets")
+        if verdict == "meets":
             continue
+        if r.get("role") == "guardrail":
+            sev = Severity.CRITICAL if verdict == "fail" else Severity.HIGH
+        else:
+            sev = Severity.HIGH if verdict == "fail" else Severity.MEDIUM
         out.append(Finding(REVIEW_DIMENSION, sev, False,
-                           f"{r['reviewer']}: {r.get('concern') or 'raised a concern'}", source=r["reviewer"]))
+                           f"{r['reviewer']}: {r.get('concern') or 'flagged an issue'}", source=r["reviewer"]))
     return out
 
 
 def aggregate_quality(reviews: list[dict]) -> float | None:
-    """Mean of reviewer scores, 0–100 (the reward side)."""
-    scores = [r["score"] for r in reviews if isinstance(r.get("score"), (int, float))]
-    return round(sum(scores) / len(scores), 1) if scores else None
+    """Headline 0–100 = mean of the REWARD axes (message power + tailoring). The guardrail
+    is a GATE, not an average: a safety fail/concern caps the headline regardless of how
+    strong or well-tailored the copy is — you can't buy back a liability with good writing."""
+    rewards = [r["score"] for r in reviews
+               if r.get("role", "reward") != "guardrail" and isinstance(r.get("score"), (int, float))]
+    if rewards:
+        base = sum(rewards) / len(rewards)
+    else:  # guardrail-only / legacy reviews → fall back to any numeric score
+        any_scores = [r["score"] for r in reviews if isinstance(r.get("score"), (int, float))]
+        if not any_scores:
+            return None
+        base = sum(any_scores) / len(any_scores)
+    for r in reviews:
+        if r.get("role") == "guardrail":
+            if r.get("verdict") == "fail":
+                base = min(base, 35.0)
+            elif r.get("verdict") == "concern":
+                base = min(base, 60.0)
+    return round(base, 1)

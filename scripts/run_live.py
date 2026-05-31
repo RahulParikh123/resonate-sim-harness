@@ -94,6 +94,7 @@ async def main() -> int:
         async with sem:
             ch, intent = b["channel"], b["intent"]
             itype, model, persona = b.get("intent_type", "fresh_draft"), b.get("model", ""), b.get("persona", "")
+            seg = b.get("target_segment", "")
             surface = f"Uniform Messaging · {humanize_channel(ch)}"
             preflight_qa, draft_intent = list(b.get("preflight_qa") or []), intent
             if args.preflight:
@@ -111,11 +112,11 @@ async def main() -> int:
                                                 voice_mode=b.get("voice_mode", "light"))
                 return ResonateClient.to_sim_result(f"sim-{i}", ch, itype, intent, b.get("brief_context", ""),
                                                     resp, model=model, persona=persona, surface=surface,
-                                                    preflight_qa=preflight_qa), None
+                                                    preflight_qa=preflight_qa, target_segment=seg), None
             except ApiError as e:
                 return SimResult(id=f"sim-{i}", channel=ch, intent_type=itype, model=model, persona=persona,
-                                 surface=surface, preflight_qa=preflight_qa, content_text="", brief_intent=intent,
-                                 refused=True, produced_composer_draft=False), f"[{e.status}] {e.body[:120]}"
+                                 surface=surface, target_segment=seg, preflight_qa=preflight_qa, content_text="",
+                                 brief_intent=intent, refused=True, produced_composer_draft=False), f"[{e.status}] {e.body[:120]}"
 
     # Draft in chunks so the Grok cap can stop the run between chunks.
     indexed = list(enumerate(briefs))

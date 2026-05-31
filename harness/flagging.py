@@ -21,6 +21,7 @@ class SimVerdict:
     model: str = ""
     persona: str = ""
     surface: str = ""
+    target_segment: str = ""
     quality_score: float | None = None
     reviews: list = field(default_factory=list)
     preflight_qa: list = field(default_factory=list)

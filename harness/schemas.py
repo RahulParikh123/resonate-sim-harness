@@ -53,6 +53,7 @@ class SimResult:
     channel: str  # live UI channel ("Speeches / Docs", "TV", …) or backend family
     intent_type: str = "fresh_draft"  # fresh_draft | revision | discussion | edge_case
     surface: str = ""  # which chatbox/surface produced this (e.g. "Uniform Messaging — Email")
+    target_segment: str = ""  # the voter group this message is tailored to (scored FOR this group)
     model: str = ""    # input-generator model (incidental; the platform always drafts with Grok)
     persona: str = ""  # input-generator persona (incidental)
     content_text: str = ""
@@ -78,6 +79,7 @@ class SimResult:
             channel=d.get("channel", ""),
             intent_type=d.get("intent_type", "fresh_draft"),
             surface=d.get("surface", ""),
+            target_segment=d.get("target_segment", ""),
             model=d.get("model", ""),
             persona=d.get("persona", ""),
             content_text=d.get("content_text", ""),

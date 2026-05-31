@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from harness.config import DEFAULT_JOBS, DEFAULT_REVIEWERS, load_config, rotate_reviewers  # noqa: E402
 from harness.llm import Budget, BudgetExceeded, safe_json  # noqa: E402
-from harness.reviewers import _VERDICT_SEVERITY  # noqa: E402
+from harness.reviewers import _VERDICT_SEVERITY, aggregate_quality  # noqa: E402
 from harness.schemas import Severity  # noqa: E402
 
 
@@ -65,6 +65,28 @@ class ReviewerTests(unittest.TestCase):
         self.assertTrue(DEFAULT_REVIEWERS)
         self.assertTrue(all(r.name and r.model and r.criteria for r in DEFAULT_REVIEWERS))
 
+    def test_jobs_are_three_axes_with_a_guardrail(self):
+        self.assertEqual(len(DEFAULT_JOBS), 3)
+        roles = {j.key: j.role for j in DEFAULT_JOBS}
+        self.assertEqual(roles.get("guardrail"), "guardrail")
+        self.assertEqual(sum(1 for j in DEFAULT_JOBS if j.role == "reward"), 2)
+
+    def test_aggregate_is_reward_mean_when_guardrail_clean(self):
+        reviews = [
+            {"role": "reward", "score": 80, "verdict": "meets"},
+            {"role": "reward", "score": 60, "verdict": "meets"},
+            {"role": "guardrail", "score": 100, "verdict": "meets"},
+        ]
+        self.assertEqual(aggregate_quality(reviews), 70.0)  # mean(80,60); guardrail clean → no cap
+
+    def test_guardrail_fail_caps_the_score(self):
+        reviews = [
+            {"role": "reward", "score": 95, "verdict": "meets"},
+            {"role": "reward", "score": 90, "verdict": "meets"},
+            {"role": "guardrail", "score": 10, "verdict": "fail"},
+        ]
+        self.assertLessEqual(aggregate_quality(reviews), 35.0)  # a liability can't be bought back with good copy
+
 
 class RotationTests(unittest.TestCase):
     MODELS = ["claude", "gpt", "gemini", "grok", "kimi"]
@@ -73,12 +95,13 @@ class RotationTests(unittest.TestCase):
         revs = rotate_reviewers(DEFAULT_JOBS, self.MODELS, offset=0)
         self.assertEqual(len(revs), len(DEFAULT_JOBS))
         self.assertEqual([r.name for r in revs], [j.name for j in DEFAULT_JOBS])
-        self.assertEqual([r.model for r in revs], self.MODELS)  # offset 0 → identity
+        # offset 0 → the first len(jobs) models, in order
+        self.assertEqual([r.model for r in revs], self.MODELS[:len(DEFAULT_JOBS)])
 
     def test_offset_rotates_models(self):
-        r0 = [r.model for r in rotate_reviewers(DEFAULT_JOBS, self.MODELS, 0)]
+        n = len(self.MODELS)
         r1 = [r.model for r in rotate_reviewers(DEFAULT_JOBS, self.MODELS, 1)]
-        self.assertEqual(r1, r0[1:] + r0[:1])  # rotated by one
+        self.assertEqual(r1, [self.MODELS[(i + 1) % n] for i in range(len(DEFAULT_JOBS))])
 
     def test_latin_square_full_coverage(self):
         # Across offsets 0..N-1, every job is played by every model exactly once.

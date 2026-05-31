@@ -36,6 +36,7 @@ def print_legend() -> None:
     print("    1. Request    a realistic campaign ask (with clarifying questions, if enabled) goes in.")
     print("    2. Grok       the platform drafts the message — unchanged.")
     print("    3. Checks     instant objective rule-checks catch hard failures (free, fast).")
-    print("    4. Reviewers  a council proxying different voters scores 0–100 + suggests how to improve.")
+    print("    4. Reviewers  five models rotate across three axes — message power, tailoring to the target")
+    print("                  segment, and a safety guardrail — scoring 0–100 + how to improve, for the target.")
     print("    5. Flagging   problems grouped + ranked; suggestions collected. Reviewers never rewrite.")
     print("    Full write-up → HOW-IT-WORKS.md")

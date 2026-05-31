@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS runs(
   sim_count INTEGER, flagged INTEGER, config TEXT);
 CREATE TABLE IF NOT EXISTS sims(
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, sim_id TEXT, channel TEXT,
-  intent_type TEXT, model TEXT, persona TEXT, surface TEXT, quality_score REAL,
+  intent_type TEXT, model TEXT, persona TEXT, surface TEXT, target_segment TEXT, quality_score REAL,
   reviews_json TEXT, preflight_qa_json TEXT, severity TEXT, finding_count INTEGER);
 CREATE TABLE IF NOT EXISTS findings(
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER, sim_id TEXT, dimension TEXT,
@@ -36,6 +36,11 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(_SCHEMA)
+        # Lightweight migration for DBs created before target_segment existed.
+        try:
+            self.db.execute("ALTER TABLE sims ADD COLUMN target_segment TEXT")
+        except Exception:
+            pass
 
     def save_run(self, mode: str, target: str, verdicts: list[SimVerdict],
                  clusters: list[Cluster], config: dict | None = None) -> int:
@@ -48,10 +53,11 @@ class Store:
         run_id = cur.lastrowid
         for v in verdicts:
             cur.execute(
-                "INSERT INTO sims(run_id,sim_id,channel,intent_type,model,persona,surface,quality_score,"
-                "reviews_json,preflight_qa_json,severity,finding_count) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                (run_id, v.sim_id, v.channel, v.intent_type, v.model, v.persona, v.surface, v.quality_score,
-                 json.dumps(v.reviews or []), json.dumps(v.preflight_qa or []),
+                "INSERT INTO sims(run_id,sim_id,channel,intent_type,model,persona,surface,target_segment,"
+                "quality_score,reviews_json,preflight_qa_json,severity,finding_count) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (run_id, v.sim_id, v.channel, v.intent_type, v.model, v.persona, v.surface, v.target_segment,
+                 v.quality_score, json.dumps(v.reviews or []), json.dumps(v.preflight_qa or []),
                  v.severity.value if v.severity else "pass", len(v.findings)),
             )
             for f in v.findings:

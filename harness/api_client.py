@@ -171,13 +171,13 @@ class ResonateClient:
     @staticmethod
     def to_sim_result(sim_id: str, channel: str, intent_type: str, brief_intent: str,
                      brief_context: str, draft_resp: dict, model: str = "", persona: str = "",
-                     surface: str = "", preflight_qa: list | None = None) -> SimResult:
+                     surface: str = "", preflight_qa: list | None = None, target_segment: str = "") -> SimResult:
         """Build a SimResult from a draft-batch response's first draft."""
         drafts = draft_resp.get("drafts") or []
         d = drafts[0] if drafts else {}
         return SimResult(
             id=sim_id, channel=channel, intent_type=intent_type, model=model, persona=persona,
-            surface=surface, preflight_qa=preflight_qa or [],
+            surface=surface, target_segment=target_segment, preflight_qa=preflight_qa or [],
             content_text=d.get("content_text", ""), subject=d.get("subject"),
             brief_intent=brief_intent, brief_context=brief_context,
             refused=bool(d.get("refused", False)),

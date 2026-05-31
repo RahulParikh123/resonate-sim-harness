@@ -324,7 +324,7 @@ def page_results(store: Store) -> None:
             rv["flag"] = rv["verdict"].isin(["concern", "fail"])
         col_job, col_model = st.columns(2)
         with col_job:
-            st.markdown("**By reviewer job** — the point of view")
+            st.markdown("**By scoring axis** — power · tailoring · guardrail")
             if rv.empty:
                 st.caption("Reviewer scores appear after a live run with reviewers turned on.")
             else:
@@ -334,7 +334,7 @@ def page_results(store: Store) -> None:
                 st.bar_chart(rb.set_index("Job")["Avg score"], height=200)
                 st.dataframe(rb, use_container_width=True, hide_index=True)
         with col_model:
-            st.markdown("**By model** — each one rotates across all 5 jobs")
+            st.markdown("**By model** — each rotates across the 3 axes")
             if rv.empty or "model" not in rv or rv["model"].isna().all():
                 st.caption("Per-model scores appear after a live run with the rotating council.")
             else:
@@ -345,17 +345,20 @@ def page_results(store: Store) -> None:
                 mb = mb[["Model", "Avg score", "Reviews", "Concerns"]].sort_values("Avg score")
                 st.bar_chart(mb.set_index("Model")["Avg score"], height=200)
                 st.dataframe(mb, use_container_width=True, hide_index=True)
-        col_ch, col_rt = st.columns(2)
-        for box, col, head in ((col_ch, "channel", "Channel"), (col_rt, "intent_type", "Request type")):
+        col_ch, col_rt, col_seg = st.columns(3)
+        rows3 = [(col_ch, "channel", "Channel"), (col_rt, "intent_type", "Request type")]
+        if "target_segment" in view.columns:
+            rows3.append((col_seg, "target_segment", "Target segment"))
+        for box, col, head in rows3:
             with box:
                 st.markdown(f"**By {head.lower()}**")
-                hz = humanize_channel if col == "channel" else humanize_intent
+                hz = humanize_channel if col == "channel" else (humanize_intent if col == "intent_type" else None)
                 g = breakdown(view, col, hz)
                 st.bar_chart(g.set_index(col)["clean_%"], height=200)
                 st.dataframe(g.rename(columns={col: head, "sims": "Messages", "flagged": "Flagged",
                                                "clean_%": "Clean %"}), use_container_width=True, hide_index=True)
-        st.caption("Every message is reviewed by all five models in rotating roles. **By job** = how each point of "
-                   "view scores; **By model** = how each model behaves across the jobs it played.")
+        st.caption("Every message is scored on three axes (power, tailoring, guardrail) by models in rotating "
+                   "roles, **for its target segment** — power + tailoring drive the score; the guardrail caps it.")
     st.divider()
 
     st.subheader("Every simulated message")
@@ -365,6 +368,7 @@ def page_results(store: Store) -> None:
         disp = pd.DataFrame({
             "Message": view["Message"],
             "Surface": view["surface"].replace("", "—") if "surface" in view.columns else "—",
+            "Target": view["target_segment"].replace("", "—") if "target_segment" in view.columns else "—",
             "Result": view["severity"].map(humanize_severity),
             "Quality": view["quality_score"].map(lambda x: f"{int(x)}/100" if pd.notna(x) else "—")
             if "quality_score" in view.columns else "—",

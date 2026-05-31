@@ -29,11 +29,13 @@ class CouncilConfig:
 
 @dataclass
 class Reviewer:
-    """A critic persona. A model role-plays this reviewer and judges Grok's draft
-    against `criteria` — its own standards/preferences. It never rewrites the draft."""
+    """One review axis bound to the model performing it this simulation. The model
+    judges Grok's draft against `criteria`; it never rewrites. `role` decides whether
+    the score feeds the headline (reward) or acts as a gate (guardrail)."""
     name: str
     model: str
     criteria: str
+    role: str = "reward"
 
 
 # Default review council — each reviewer PROXIES a point of view. Most are voters
@@ -65,39 +67,41 @@ DEFAULT_REVIEWERS: list[Reviewer] = [
 ]
 
 
-# ── the five review JOBS, independent of which model performs them ──────────────
+# ── the review JOBS, independent of which model performs them ───────────────────
 @dataclass
 class Job:
-    """A review role / point of view, decoupled from any model. Every simulation
-    assigns each job to a different model, and the assignment ROTATES across
-    simulations so that over a run every model plays every job (a Latin square).
-    That rotation is what turns five models into true, bias-balanced diversity."""
+    """A review axis, decoupled from any model. Every simulation assigns each axis to
+    a model, and the assignment ROTATES across simulations so that over a run every
+    model scores every axis — bias-balanced diversity from the five-model council."""
     key: str
     name: str
     criteria: str
+    role: str = "reward"  # "reward" (feeds the headline score) | "guardrail" (a gate/flag)
 
 
-# Five jobs ↔ five models. Edit freely in the Configure page; they review Grok's
-# draft and never rewrite it. (Criteria mirror the voter-POV reviewers.)
+# The three things a campaign actually optimizes when it tailors a message to a group
+# (the methodology the team settled on). Each message is scored FOR ITS TARGET SEGMENT —
+# the council strengthens it for that group and never softens it to court non-recipients.
+# Only the guardrail constrains. Edit freely in the Configure page; reviewers never rewrite.
 DEFAULT_JOBS: list[Job] = [
-    Job("target", "Target-segment voter",
-        "You ARE the specific voter group this message is tailored to. Judge it the way that group would: "
-        "does it actually speak to our lives, language, and values, or is it a stereotype / generic pander? "
-        "If tailoring is claimed (e.g. to a community), verify it genuinely lands for us. High bar for authenticity."),
-    Job("swing", "Skeptical swing voter",
-        "You are an undecided, time-poor swing voter who distrusts politicians. Judge whether this actually "
-        "moves you or reads as spin, cliché, or hot air. You have a low tolerance for cringe and over-claiming; "
-        "you reward concrete, believable, human messages with one clear point."),
-    Job("opposition", "Hostile / opposition reader",
-        "You are an opponent's tracker looking for ammunition. Judge what in this message could backfire, be "
-        "clipped out of context, offend a group, or be attacked as false or extreme. Flag the liabilities."),
-    Job("coach", "Message-quality coach",
-        "You are a top political copy chief. Judge purely on craft: is this the BEST possible version of this "
-        "message? Clarity, hook, single ask, memorability, structure, and length-fit for the channel. Always "
-        "give one concrete way to make it better."),
-    Job("compliance", "Compliance & legal guardrail",
-        "You are a campaign lawyer. This is a guardrail, not the main goal: flag only missing/weak 'Paid for "
-        "by' disclaimers, unverified factual or financial claims, and clear FEC/FCC/TCPA exposure."),
+    Job("power", "Message power",
+        "Judge ONLY how strong and compelling this message is FOR THE TARGET SEGMENT it's written for — "
+        "its hook, clarity, single clear ask, memorability, emotional pull, and persuasive force. A message "
+        "built to hit hard for its target should score HIGH even if it would not appeal to other groups. Do "
+        "NOT lower the score because it fails to court voters outside the target — that is the point of "
+        "tailoring, not a flaw.", role="reward"),
+    Job("tailoring", "Tailoring to the target",
+        "Judge whether this message genuinely speaks to and resonates with THE SPECIFIC TARGET SEGMENT — their "
+        "lives, language, values, and concerns — using what is broadly true of that group. Reward authentic, "
+        "specific fit; flag generic copy that could go to anyone, AND flag lazy stereotype or pandering. Trust "
+        "real resonance over a narrow data point. Do NOT reward softening or hedging the message to also appeal "
+        "to people outside the target.", role="reward"),
+    Job("guardrail", "Safety guardrail",
+        "You are a guardrail, NOT a booster — do not score persuasion or fit (other reviewers do that). Flag "
+        "ONLY genuine risk: anything heinous, offensive, hateful, or cringe; false or unverifiable claims; a "
+        "missing/weak 'Paid for by'; and above all anything that, if it surfaced beyond the target audience, "
+        "could be clipped and used against the campaign. A clean message scores high; a risky one scores low "
+        "with the specific liability named.", role="guardrail"),
 ]
 
 
@@ -105,7 +109,8 @@ def rotate_reviewers(jobs: list[Job], models: list[str], offset: int) -> list[Re
     """Assign each job a model, rotated by `offset`. With equal counts this is a
     bijection; over offsets 0..N-1 every model plays every job exactly once."""
     n = len(models) or 1
-    return [Reviewer(job.name, models[(i + offset) % n], job.criteria) for i, job in enumerate(jobs)]
+    return [Reviewer(job.name, models[(i + offset) % n], job.criteria, getattr(job, "role", "reward"))
+            for i, job in enumerate(jobs)]
 
 
 @dataclass

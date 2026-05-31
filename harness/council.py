@@ -24,11 +24,26 @@ PERSONAS = [
 CHANNELS = ["email", "sms", "speech", "mail", "radio", "tv", "social"]
 INTENTS = ["fresh_draft", "revision", "discussion", "edge_case"]
 
+# The voter group each message is TAILORED TO. The council writes for one of these and
+# the review council scores fit to it. The first is "uniform" — one message for everyone.
+TARGET_SEGMENTS = [
+    "the full electorate (a uniform message to everyone)",
+    "Latino voters",
+    "Black voters / the Black caucus",
+    "union households and working-class voters",
+    "suburban swing women",
+    "young first-time voters (18–29)",
+    "seniors on fixed incomes",
+    "rural and small-town voters",
+]
 
-def brief_system_prompt(persona: str, channel: str, intent_type: str) -> str:
+
+def brief_system_prompt(persona: str, channel: str, intent_type: str, segment: str) -> str:
     return (
         f"You are role-playing a political-campaign operator: {persona}. "
-        f"Produce ONE realistic request for a {channel} message with intent_type={intent_type}. "
+        f"Produce ONE realistic request for a {channel} message with intent_type={intent_type}, "
+        f"TAILORED TO this target group: {segment}. Make the request clearly for that group so the drafter "
+        f"tailors to them — do NOT water it down to also appeal to other groups. "
         "Return ONLY a strict JSON object with keys: intent (the request text), channel, "
         "intent_type, voice_mode (off|light|strong), optional verbatim_request, optional "
         "brief_context (facts/URLs you are supplying, or empty). Make it the kind of messy, "
@@ -45,8 +60,9 @@ def _user_prompt(channel: str, intent_type: str, idx: int) -> str:
 
 
 async def generate_brief(model: str, persona: str, channel: str, intent_type: str,
+                        segment: str = "the full electorate (a uniform message to everyone)",
                         idx: int = 0, budget: Budget | None = None) -> dict:
-    text, _ = await acomplete(model, brief_system_prompt(persona, channel, intent_type),
+    text, _ = await acomplete(model, brief_system_prompt(persona, channel, intent_type, segment),
                               _user_prompt(channel, intent_type, idx), budget=budget, json_mode=True)
     d = safe_json(text) or {}
     return {
@@ -56,6 +72,7 @@ async def generate_brief(model: str, persona: str, channel: str, intent_type: st
         "voice_mode": d.get("voice_mode", "light"),
         "verbatim_request": d.get("verbatim_request"),
         "brief_context": d.get("brief_context", ""),
+        "target_segment": segment,
         "model": model,
         "persona": persona,
     }
@@ -91,7 +108,8 @@ async def generate_matrix(cfg: HarnessConfig, budget: Budget | None = None, conc
             for channel in cfg.matrix.channels:
                 for intent in cfg.matrix.intents:
                     for _ in range(cfg.matrix.repeats_per_cell):
-                        cells.append((model, persona, channel, intent, len(cells)))
+                        segment = TARGET_SEGMENTS[len(cells) % len(TARGET_SEGMENTS)]
+                        cells.append((model, persona, channel, intent, segment, len(cells)))
     cells = cells[: cfg.matrix.draft_cap]
 
     sem = asyncio.Semaphore(concurrency)
@@ -99,7 +117,8 @@ async def generate_matrix(cfg: HarnessConfig, budget: Budget | None = None, conc
     async def one(cell):
         async with sem:
             try:
-                return await generate_brief(*cell[:4], idx=cell[4], budget=budget)
+                return await generate_brief(cell[0], cell[1], cell[2], cell[3],
+                                            segment=cell[4], idx=cell[5], budget=budget)
             except Exception:
                 return None
 
