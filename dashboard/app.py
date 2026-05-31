@@ -137,20 +137,20 @@ ABOUT_HTML = """
   blocked at multiple independent levels from ever sending a message to an actual voter. Nothing here can touch
   a live campaign, an inbox, or a phone.</p>
 
-  <h3 style="font-size:1.05rem; margin:1.4em 0 .4em;">How the results are organized &mdash; the page you&rsquo;re about to see</h3>
-  <p>The next page is built to carry you from thousands of individual results down to the handful of patterns
-  that actually matter, quickly. At the very top are the headline numbers: how many messages were tested, how
-  many were flagged, the <strong>average quality score (0&ndash;100)</strong> the reviewers gave, and how much
-  the testing cost. Directly below, &ldquo;What went wrong, most important first&rdquo; gathers every problem
-  into plain-English issues, each ranked by how serious and how frequent it is. Next, &ldquo;Results broken
-  down&rdquo; cuts the findings three ways: <strong>by reviewer</strong> (the average score each gave and how
-  many concerns it raised), by channel, and by request type. After that, &ldquo;Every simulated message&rdquo;
-  lists each test with a <strong>Surface column telling you which chatbox it came from</strong> and its quality
-  score; open any one to see the clarifying questions the platform asked, the objective issues, and each
-  reviewer&rsquo;s score and suggestion. A &ldquo;How to improve&rdquo; digest collects the reviewers&rsquo;
-  concrete suggestions across the batch. Two more pages round it out: a Configure page where you or your
-  cofounders can edit the reviewers and checks without touching code, and a Trends page tracking whether quality
-  climbs run over run.</p>
+  <h3 style="font-size:1.05rem; margin:1.4em 0 .4em;">How the results are organized &mdash; what you&rsquo;re about to see</h3>
+  <p>The heart of it is the <strong>Simulated messages</strong> page (the first one). It lists every message in
+  the run, one row each, with: <strong>where in Resonate</strong> it came from, <strong>what the campaign
+  asked</strong>, the <strong>target voters</strong>, <strong>what Grok wrote</strong>, whether we
+  <strong>flagged it</strong>, and its quality score &mdash; sortable so the flagged ones come first. Open any
+  message for the full story: the original request, the follow-up questions Resonate asked back (and the
+  answers), the message itself, whether it was flagged and why in plain English, and exactly which of the five
+  models scored it on which criterion, with their verdicts and concrete suggestions.</p>
+  <p>Everything else is supporting context. <strong>Overview &amp; issues</strong> has the headline numbers (how
+  many tested, how many flagged, average quality, cost) and groups every problem into plain-English issues
+  ranked by how serious and how frequent. <strong>Change settings &amp; re-run</strong> lets you edit the
+  reviewers, checks, and budgets without touching code. <strong>Run your own (cofounders)</strong> is the
+  step-by-step for a teammate to run it with their own keys. Nowhere does anything rewrite a draft &mdash; the
+  platform reviews what Grok produced and tells your team how to make it better.</p>
 
   <p style="margin-top:1.4em;"><strong>In short:</strong> this platform exercises Resonate the way thousands of
   real campaigns would, judges what comes out with a diverse and independent panel, and hands you the results
