@@ -19,8 +19,9 @@ repeats_per_cell = 2
 max_sims = 200
 
 [budgets]
-council_usd = 60.0
-backend_draft_usd = 30.0
+per_model_usd = 10.0        # hard $10 cap on EACH reviewer/council model
+backend_draft_usd = 20.0    # hard $20 cap on Grok drafting (the language agent)
+council_usd = 80.0          # informational overall ceiling
 
 [flagging]
 cluster = true

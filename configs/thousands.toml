@@ -1,0 +1,63 @@
+# PRESET: thousands — large-scale pre-deployment pass with the FULL rotating council.
+#
+# How "thousands of simulations within budget" works:
+#   • The platform drafts every scenario with Grok (the only paid backend step). At
+#     ~$0.02–0.05 per draft, the $20 Grok cap buys ~400–800 DISTINCT drafts.
+#   • Each draft is then reviewed by the 5-model council, and the model↔job assignment
+#     ROTATES every simulation (a Latin square). Re-reviewing each draft under several
+#     rotations multiplies drafts into thousands of SIMULATIONS — and reviews are cheap.
+#   • The run stops itself when EITHER the $20 Grok cap (drafting) OR any reviewing
+#     model's $10 cap is hit — whichever comes first. The priciest reviewer (Grok)
+#     caps around ~1,200 simulations, so that's the realistic ceiling at these caps.
+#     Raise per_model_usd / backend_draft_usd to go higher.
+name = "thousands"
+description = "Full rotating council at scale — every channel & request type, 5 models rotating across 5 jobs, thousands of simulations, stops at your budget caps."
+
+[target]
+base_url = "http://localhost:8000"
+dev_email = "harness-operator@example.com"
+
+# The five-model council — one model per provider (the diversity backbone). These
+# both generate varied campaign requests AND rotate across the five review jobs.
+[council]
+models = ["claude", "gpt", "gemini", "grok", "kimi"]
+
+# Review JOBS omitted → the 5 default voter-POV / craft / compliance roles.
+# Each is played by a different model every simulation, rotating across runs.
+
+[matrix]
+channels = ["email", "sms", "speech", "mail", "radio", "tv", "social"]
+intents = ["fresh_draft", "revision", "discussion", "edge_case"]
+repeats_per_cell = 1
+max_drafts = 600            # ceiling on distinct Grok drafts (Grok's $20 cap usually binds first)
+rotations_per_draft = 5     # re-review each draft under up to 5 rotated model↔job assignments
+max_sims = 3000             # ceiling on total simulations (= drafts × rotations)
+
+[budgets]
+per_model_usd = 10.0        # HARD $10 cap on EACH reviewing model (Claude, GPT, Gemini, Grok, Kimi)
+backend_draft_usd = 20.0    # HARD $20 cap on Grok drafting (the language agent)
+council_usd = 80.0          # informational overall ceiling
+
+[flagging]
+cluster = true
+
+[output]
+db_path = "runs/harness.db"
+
+[rubric]
+sms_max_chars = 320
+broadcast_slot_seconds = 30
+words_per_sec = 2.5
+speech_min_words = 120
+stance_drift_warn = 0.50
+stance_drift_high = 0.75
+
+[rubric.dimensions]
+scaffolding_leak            = { enabled = true, severity = "high" }
+empty_or_refused            = { enabled = true, severity = "high" }
+fabricated_operational_info = { enabled = true, severity = "high" }
+chat_routing                = { enabled = true, severity = "high" }
+length_contract             = { enabled = true }
+markdown_in_plaintext       = { enabled = true, severity = "medium" }
+compliance_phrasing         = { enabled = true, severity = "medium" }
+stance_drift                = { enabled = true }

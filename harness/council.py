@@ -83,7 +83,7 @@ async def answer_preflight(model: str, persona: str, intent: str, questions: lis
 
 async def generate_matrix(cfg: HarnessConfig, budget: Budget | None = None, concurrency: int = 8) -> list[dict]:
     """Fan out council briefs across model × persona × channel × intent × repeats,
-    capped at cfg.matrix.max_sims. Failed cells are dropped."""
+    capped at the draft cap (distinct drafts). Failed cells are dropped."""
     personas = cfg.council.personas or PERSONAS
     cells = []
     for model in cfg.council.models:
@@ -92,7 +92,7 @@ async def generate_matrix(cfg: HarnessConfig, budget: Budget | None = None, conc
                 for intent in cfg.matrix.intents:
                     for _ in range(cfg.matrix.repeats_per_cell):
                         cells.append((model, persona, channel, intent, len(cells)))
-    cells = cells[: cfg.matrix.max_sims]
+    cells = cells[: cfg.matrix.draft_cap]
 
     sem = asyncio.Semaphore(concurrency)
 

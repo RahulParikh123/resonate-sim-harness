@@ -26,6 +26,14 @@ OUTPUT_FAMILY = {
     "radio": "paid_ad", "tv": "paid_ad", "social": "social_post",
 }
 
+# UI channel → backend channel path segment. The backend calls speeches "press".
+# Valid backend channels: canvass, email, mail, press, radio, sms, social, tv.
+CHANNEL_PATH = {"speech": "press", "speeches / docs": "press", "docs": "press"}
+
+
+def _channel(ch: str) -> str:
+    return CHANNEL_PATH.get((ch or "").strip().lower(), (ch or "").strip().lower())
+
 
 class ApiError(RuntimeError):
     def __init__(self, status: int, body: str):
@@ -117,7 +125,7 @@ class ResonateClient:
                         voice_mode: str = "light") -> dict:
         return await self._req(
             "POST", f"/api/v1/projects/{project_id}/language/preflight-questions",
-            json_body={"intent": intent, "channel": channel,
+            json_body={"intent": intent, "channel": _channel(channel),
                        "output_family": output_family or OUTPUT_FAMILY.get(channel, channel),
                        "max_questions": max_questions, "voice_mode": voice_mode},
         )
@@ -136,7 +144,7 @@ class ResonateClient:
         }
         if verbatim_request:
             body["verbatim_request"] = verbatim_request
-        return await self._req("POST", f"/api/v1/projects/{project_id}/language/draft-batch/{channel}", json_body=body)
+        return await self._req("POST", f"/api/v1/projects/{project_id}/language/draft-batch/{_channel(channel)}", json_body=body)
 
     async def draft_batch_stream(self, project_id: str, channel: str, intent: str, **kw):
         """SSE variant. Yields (event_type, data_dict). Terminal events: 'draft', 'error'."""
@@ -146,7 +154,7 @@ class ResonateClient:
                 "scope": kw.get("scope", "single"), "segment_keys": kw.get("segment_keys") or [],
                 "voice_mode": kw.get("voice_mode", "light"), "project_category": kw.get("project_category", "*")}
         async with self._client() as c:
-            async with c.stream("POST", f"/api/v1/projects/{project_id}/language/draft-batch/{channel}/stream",
+            async with c.stream("POST", f"/api/v1/projects/{project_id}/language/draft-batch/{_channel(channel)}/stream",
                                 json=body) as r:
                 if r.status_code >= 400:
                     raise ApiError(r.status_code, await r.aread() and (await r.aread()).decode("utf-8", "ignore"))

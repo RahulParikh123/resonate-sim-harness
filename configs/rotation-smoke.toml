@@ -1,27 +1,27 @@
-# PRESET: quick smoke test — fast sanity check.
-# ~8 messages, email + SMS, fresh drafts only. Cheap and quick.
-name = "quick-smoke"
-description = "Fast sanity check — email + SMS, fresh drafts, a handful of messages."
+# PRESET: rotation smoke — tiny, cheap sanity check of the 5-model × 5-job rotation.
+# A few drafts, each reviewed under all 5 rotations by all 5 models. Proves the loop.
+name = "rotation-smoke"
+description = "Tiny rotation sanity check — a few drafts, full 5×5 rotating council."
 
 [target]
 base_url = "http://localhost:8000"
 dev_email = "harness-operator@example.com"
 
 [council]
-models = ["council/claude"]
-
-# Reviewers omitted → uses the default voter-POV council. Add [[reviewers]] to customize.
+models = ["claude", "gpt", "gemini", "grok", "kimi"]
 
 [matrix]
-channels = ["email", "sms"]
+channels = ["email", "sms", "speech"]
 intents = ["fresh_draft"]
 repeats_per_cell = 1
-max_sims = 8
+max_drafts = 3
+rotations_per_draft = 5
+max_sims = 15
 
 [budgets]
-per_model_usd = 3.0         # tight $3/model cap for a cheap smoke run
-backend_draft_usd = 3.0     # $3 Grok cap
-council_usd = 15.0
+per_model_usd = 2.0
+backend_draft_usd = 2.0
+council_usd = 10.0
 
 [flagging]
 cluster = true

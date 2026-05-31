@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from harness.config import DEFAULT_REVIEWERS, load_config  # noqa: E402
+from harness.config import DEFAULT_JOBS, DEFAULT_REVIEWERS, load_config, rotate_reviewers  # noqa: E402
 from harness.llm import Budget, BudgetExceeded, safe_json  # noqa: E402
 from harness.reviewers import _VERDICT_SEVERITY  # noqa: E402
 from harness.schemas import Severity  # noqa: E402
@@ -21,18 +21,25 @@ from harness.schemas import Severity  # noqa: E402
 
 class BudgetTests(unittest.TestCase):
     def test_under_cap_ok(self):
-        Budget(cap_usd=1.0).check()  # no raise
+        Budget(per_model_cap=1.0).check("m")  # no raise
 
     def test_over_cap_raises(self):
-        b = Budget(cap_usd=0.01)
-        b.add(0.02)
+        b = Budget(per_model_cap=0.01)
+        b.add("m", 0.02)
         with self.assertRaises(BudgetExceeded):
-            b.check()
+            b.check("m")
+
+    def test_per_model_isolation(self):
+        b = Budget(per_model_cap=1.0)
+        b.add("a", 2.0)
+        with self.assertRaises(BudgetExceeded):
+            b.check("a")
+        b.check("b")  # a different model, still under its own cap → no raise
 
     def test_add_accumulates_and_counts(self):
-        b = Budget(cap_usd=10.0)
-        b.add(0.5)
-        b.add(0.25)
+        b = Budget(per_model_cap=10.0)
+        b.add("m", 0.5)
+        b.add("m", 0.25)
         self.assertAlmostEqual(b.spent_usd, 0.75)
         self.assertEqual(b.calls, 2)
 
@@ -57,6 +64,30 @@ class ReviewerTests(unittest.TestCase):
     def test_default_reviewers_are_well_formed(self):
         self.assertTrue(DEFAULT_REVIEWERS)
         self.assertTrue(all(r.name and r.model and r.criteria for r in DEFAULT_REVIEWERS))
+
+
+class RotationTests(unittest.TestCase):
+    MODELS = ["claude", "gpt", "gemini", "grok", "kimi"]
+
+    def test_offset_assigns_each_job_a_model(self):
+        revs = rotate_reviewers(DEFAULT_JOBS, self.MODELS, offset=0)
+        self.assertEqual(len(revs), len(DEFAULT_JOBS))
+        self.assertEqual([r.name for r in revs], [j.name for j in DEFAULT_JOBS])
+        self.assertEqual([r.model for r in revs], self.MODELS)  # offset 0 → identity
+
+    def test_offset_rotates_models(self):
+        r0 = [r.model for r in rotate_reviewers(DEFAULT_JOBS, self.MODELS, 0)]
+        r1 = [r.model for r in rotate_reviewers(DEFAULT_JOBS, self.MODELS, 1)]
+        self.assertEqual(r1, r0[1:] + r0[:1])  # rotated by one
+
+    def test_latin_square_full_coverage(self):
+        # Across offsets 0..N-1, every job is played by every model exactly once.
+        seen = {j.name: set() for j in DEFAULT_JOBS}
+        for offset in range(len(self.MODELS)):
+            for r in rotate_reviewers(DEFAULT_JOBS, self.MODELS, offset):
+                seen[r.name].add(r.model)
+        for job, models in seen.items():
+            self.assertEqual(models, set(self.MODELS), f"{job} did not see every model")
 
 
 class ConfigTests(unittest.TestCase):

@@ -21,7 +21,9 @@ class TargetConfig:
 
 @dataclass
 class CouncilConfig:
-    models: list[str] = field(default_factory=lambda: ["council/claude", "council/gpt"])
+    # The five-model council. These models BOTH generate varied campaign requests AND
+    # rotate across the review jobs. One model per provider = the diversity backbone.
+    models: list[str] = field(default_factory=lambda: ["claude", "gpt", "gemini", "grok", "kimi"])
     personas: list[str] = field(default_factory=list)
 
 
@@ -63,18 +65,68 @@ DEFAULT_REVIEWERS: list[Reviewer] = [
 ]
 
 
+# ── the five review JOBS, independent of which model performs them ──────────────
+@dataclass
+class Job:
+    """A review role / point of view, decoupled from any model. Every simulation
+    assigns each job to a different model, and the assignment ROTATES across
+    simulations so that over a run every model plays every job (a Latin square).
+    That rotation is what turns five models into true, bias-balanced diversity."""
+    key: str
+    name: str
+    criteria: str
+
+
+# Five jobs ↔ five models. Edit freely in the Configure page; they review Grok's
+# draft and never rewrite it. (Criteria mirror the voter-POV reviewers.)
+DEFAULT_JOBS: list[Job] = [
+    Job("target", "Target-segment voter",
+        "You ARE the specific voter group this message is tailored to. Judge it the way that group would: "
+        "does it actually speak to our lives, language, and values, or is it a stereotype / generic pander? "
+        "If tailoring is claimed (e.g. to a community), verify it genuinely lands for us. High bar for authenticity."),
+    Job("swing", "Skeptical swing voter",
+        "You are an undecided, time-poor swing voter who distrusts politicians. Judge whether this actually "
+        "moves you or reads as spin, cliché, or hot air. You have a low tolerance for cringe and over-claiming; "
+        "you reward concrete, believable, human messages with one clear point."),
+    Job("opposition", "Hostile / opposition reader",
+        "You are an opponent's tracker looking for ammunition. Judge what in this message could backfire, be "
+        "clipped out of context, offend a group, or be attacked as false or extreme. Flag the liabilities."),
+    Job("coach", "Message-quality coach",
+        "You are a top political copy chief. Judge purely on craft: is this the BEST possible version of this "
+        "message? Clarity, hook, single ask, memorability, structure, and length-fit for the channel. Always "
+        "give one concrete way to make it better."),
+    Job("compliance", "Compliance & legal guardrail",
+        "You are a campaign lawyer. This is a guardrail, not the main goal: flag only missing/weak 'Paid for "
+        "by' disclaimers, unverified factual or financial claims, and clear FEC/FCC/TCPA exposure."),
+]
+
+
+def rotate_reviewers(jobs: list[Job], models: list[str], offset: int) -> list[Reviewer]:
+    """Assign each job a model, rotated by `offset`. With equal counts this is a
+    bijection; over offsets 0..N-1 every model plays every job exactly once."""
+    n = len(models) or 1
+    return [Reviewer(job.name, models[(i + offset) % n], job.criteria) for i, job in enumerate(jobs)]
+
+
 @dataclass
 class MatrixConfig:
     channels: list[str] = field(default_factory=lambda: ["email", "sms"])
     intents: list[str] = field(default_factory=lambda: ["fresh_draft", "revision", "discussion"])
     repeats_per_cell: int = 1
-    max_sims: int = 50
+    max_sims: int = 50            # ceiling on total SIMULATIONS (= drafts × rotations)
+    max_drafts: int = 0           # ceiling on distinct Grok DRAFTS (0 → fall back to max_sims)
+    rotations_per_draft: int = 1  # re-review each draft under N rotated model↔job assignments
+
+    @property
+    def draft_cap(self) -> int:
+        return self.max_drafts or self.max_sims
 
 
 @dataclass
 class BudgetConfig:
-    council_usd: float = 30.0
-    backend_draft_usd: float = 15.0
+    council_usd: float = 30.0          # informational overall ceiling (reviewers + council)
+    backend_draft_usd: float = 15.0    # Grok drafting cap (backend)
+    per_model_usd: float = 10.0        # HARD cap on EACH reviewer/council model
 
 
 @dataclass
@@ -121,8 +173,9 @@ class HarnessConfig:
     name: str = "unnamed"
     description: str = ""
     target: TargetConfig = field(default_factory=TargetConfig)
-    council: CouncilConfig = field(default_factory=CouncilConfig)  # generates varied campaign INPUTS
-    reviewers: list[Reviewer] = field(default_factory=lambda: list(DEFAULT_REVIEWERS))  # the review council
+    council: CouncilConfig = field(default_factory=CouncilConfig)  # the 5-model council (generate + review)
+    jobs: list[Job] = field(default_factory=lambda: list(DEFAULT_JOBS))  # the 5 review roles, rotated across models
+    reviewers: list[Reviewer] = field(default_factory=lambda: list(DEFAULT_REVIEWERS))  # legacy fixed-model council
     matrix: MatrixConfig = field(default_factory=MatrixConfig)
     budgets: BudgetConfig = field(default_factory=BudgetConfig)
     rubric: RubricConfig = field(default_factory=RubricConfig)
@@ -147,6 +200,8 @@ def load_config(path: str | Path) -> HarnessConfig:
     m, b, r = d.get("matrix", {}), d.get("budgets", {}), d.get("rubric", {})
     reviewers = [Reviewer(rv.get("name", "Reviewer"), rv.get("model", "judge/sonnet"), rv.get("criteria", ""))
                  for rv in d.get("reviewers", [])] or list(DEFAULT_REVIEWERS)
+    jobs = [Job(jb.get("key", jb.get("name", f"job{i}")), jb.get("name", "Reviewer"), jb.get("criteria", ""))
+            for i, jb in enumerate(d.get("jobs", []))] or list(DEFAULT_JOBS)
     fl, o = d.get("flagging", {}), d.get("output", {})
     dims = {
         k: DimensionCfg(enabled=v.get("enabled", True), severity=v.get("severity"))
@@ -161,16 +216,20 @@ def load_config(path: str | Path) -> HarnessConfig:
             bearer_token=t.get("bearer_token", ""),
         ),
         council=CouncilConfig(models=c.get("models", CouncilConfig().models), personas=c.get("personas", [])),
+        jobs=jobs,
         reviewers=reviewers,
         matrix=MatrixConfig(
             channels=m.get("channels", MatrixConfig().channels),
             intents=m.get("intents", MatrixConfig().intents),
             repeats_per_cell=m.get("repeats_per_cell", 1),
             max_sims=m.get("max_sims", 50),
+            max_drafts=m.get("max_drafts", 0),
+            rotations_per_draft=m.get("rotations_per_draft", 1),
         ),
         budgets=BudgetConfig(
             council_usd=b.get("council_usd", 30.0),
             backend_draft_usd=b.get("backend_draft_usd", 15.0),
+            per_model_usd=b.get("per_model_usd", 10.0),
         ),
         rubric=RubricConfig(
             sms_max_chars=r.get("sms_max_chars", 320),

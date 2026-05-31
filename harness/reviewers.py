@@ -73,7 +73,8 @@ async def review_draft(sim: SimResult, reviewers: list[Reviewer], budget: Budget
             text, _ = await acomplete(rv.model, _system(rv), _user(sim), budget=budget, json_mode=True, temperature=0.2)
             d = safe_json(text) or {}
             return {
-                "reviewer": rv.name,
+                "reviewer": rv.name,          # the JOB (point of view)
+                "model": rv.model,            # the MODEL that played it this simulation
                 "score": _clip(d.get("score")),
                 "verdict": str(d.get("verdict", "meets")).lower(),
                 "concern": (d.get("concern") or "").strip(),
