@@ -110,9 +110,15 @@ ABOUT_HTML = """
   heinous, cringe, false, or could be clipped and used against the campaign if it surfaced beyond the target. A
   message is <em>not</em> penalized for failing to court groups outside its target &mdash; that is the point of
   tailoring, not a flaw. The first two axes reward and set the headline 0&ndash;100 score; the guardrail is a hard
-  cap, so a genuine liability pulls the score down no matter how good the writing. The five models
-  <strong>rotate across the three axes every simulation</strong>, so over a run every model scores every axis and
-  no single model&rsquo;s bias colours any one axis &mdash; a panel far harder to fool than any single critic.</p>
+  cap, so a genuine liability pulls the score down no matter how good the writing.</p>
+  <p>From first principles, here is why you can trust a score. A message is <strong>drafted once</strong>, then
+  <strong>reviewed several times</strong> &mdash; and each review pass <strong>reshuffles which model judges
+  which criterion</strong>. With five models and three criteria, it takes five passes for every model to take a
+  turn on every criterion, so each message ends up with <strong>fifteen independent model-judgments</strong> &mdash;
+  every one of the five models scoring every one of the three criteria. No single model&rsquo;s taste can decide a
+  verdict; a flag only sticks when models agree across the rotation. That is what makes this panel far harder to
+  fool than any one critic &mdash; and why, on the results page, each message shows all five models&rsquo; scores
+  on each criterion rather than a single opinion.</p>
 
   <h3 style="font-size:1.05rem; margin:1.4em 0 .4em;">What it checks &mdash; two kinds of review</h3>
   <p>The platform examines Grok&rsquo;s draft in two ways. The first is a set of instant, black-and-white rule
@@ -713,16 +719,17 @@ def page_messages(store: Store) -> None:
     runs = store.list_runs()
     st.title("📨 Simulated messages")
     st.markdown(
-        "We ran thousands of realistic campaign requests through Resonate — across every chat interface and "
-        "channel it offers (email, SMS, speeches, mail, radio, TV, social) — and let the platform draft each one "
-        "exactly as it would for a real customer. Every draft was then read by a council of **five models** "
-        "(Claude, GPT, Gemini, Grok, Kimi) that rotate across **three criteria** — is the message *powerful*, is "
-        "it genuinely *tailored* to its target voters, and is it *safe to ship* — each scoring it 0–100 for the "
-        "group it was written for. **The table below is the result: one row per simulated message.** As the "
-        "people responsible for optimizing the platform, the columns to watch are **Flagged?** (what needs a "
-        "human) and **Where** (which surface is producing the misses); **sort by flagged** to put the must-fix "
-        "items on top, and **click any row** to see the full request, the platform's follow-up questions, the "
-        "message itself, and exactly how each model scored it.")
+        "We ran realistic campaign requests through Resonate — across every chat interface and channel it offers "
+        "(email, SMS, speeches, mail, radio, TV, social) — and let the platform draft each one exactly as it "
+        "would for a real customer. Every draft is then read by a council of **five models** (Claude, GPT, "
+        "Gemini, Grok, Kimi) on **three criteria**: is the message *powerful*, is it genuinely *tailored* to its "
+        "target voters, and is it *safe to ship*. Here's the key idea: each message is reviewed **several times, "
+        "rotating which model judges which criterion**, so across the passes **all five models weigh in on every "
+        "criterion** — no single model's bias can decide a verdict. **The table below is one row per distinct "
+        "message.** The columns to watch are **Flagged?** (what needs a human) and **Where** (which surface is "
+        "producing the misses); **sort by flagged** to put the must-fix items on top, and **click any row** for "
+        "the full request, the platform's follow-up questions, the message itself, and how all five models scored "
+        "it across the three criteria.")
     if not runs:
         st.warning("No runs yet.")
         return
@@ -734,11 +741,38 @@ def page_messages(store: Store) -> None:
     if df.empty:
         st.info("No messages in this run.")
         return
-    df = df.reset_index(drop=True)
-    df["Message"] = [f"Message {i + 1}" for i in range(len(df))]
-    for c in ("surface", "target_segment", "brief_intent", "content_text"):
+    for c in ("surface", "target_segment", "brief_intent", "content_text", "preflight_qa_json", "reviews_json"):
         if c not in df.columns:
             df[c] = ""
+    # Collapse the rotation passes → ONE row per distinct message. Each draft was reviewed
+    # several times (rotating which model judged which criterion); we merge all of those
+    # model-judgments into the single message, take its worst severity, and average its quality.
+    import re as _re
+    df["_base"] = df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
+    _rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "pass": 0}
+    _rows = []
+    for base, g in df.groupby("_base", sort=False):
+        worst = g.loc[g["severity"].map(lambda s: _rank.get(s, 0)).idxmax()]
+        allrev = []
+        for rj in g["reviews_json"]:
+            try:
+                allrev += json.loads(rj or "[]")
+            except Exception:
+                pass
+        qs = g["quality_score"].dropna()
+        _rows.append({
+            "sim_id": base, "channel": worst["channel"], "intent_type": worst["intent_type"],
+            "surface": worst["surface"], "target_segment": worst["target_segment"],
+            "brief_intent": worst["brief_intent"], "content_text": worst["content_text"],
+            "preflight_qa_json": worst["preflight_qa_json"], "severity": worst["severity"],
+            "quality_score": round(qs.mean(), 1) if len(qs) else None,
+            "reviews_json": json.dumps(allrev),
+        })
+    df = pd.DataFrame(_rows).reset_index(drop=True)
+    df["Message"] = [f"Message {i + 1}" for i in range(len(df))]
+    if not find_df.empty:  # collapse finding ids too, for the per-message reason lookup
+        find_df = find_df.copy()
+        find_df["sim_id"] = find_df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
 
     st.sidebar.subheader("Filter")
     only_flag = st.sidebar.checkbox("Only flagged (must-fix + review)")
@@ -817,22 +851,39 @@ def page_messages(store: Store) -> None:
     st.markdown("**3 · The message Grok produced**" + (f"  ·  quality {int(q)}/100" if pd.notna(q) else ""))
     st.code((srow.get("content_text") or "").strip() or "(no draft text stored)", language=None)
 
-    st.markdown("**4 · How the five models scored it** — each rotates across the three criteria")
+    st.markdown("**4 · How the models scored it** — this message was reviewed several times, rotating which "
+                "model judged which criterion, so **all five models weighed in on each of the three criteria**")
     try:
         revs = json.loads(srow.get("reviews_json") or "[]")
     except Exception:
         revs = []
     if revs:
-        vd = {"meets": "✅ meets", "concern": "🟠 concern", "fail": "🔴 fails"}
-        rtab = pd.DataFrame([{
-            "Criterion reviewed": r.get("reviewer") or "—",
-            "Model that scored it": model_label(r.get("model")),
-            "Score": f"{int(r['score'])}/100" if isinstance(r.get("score"), (int, float)) else "—",
-            "Verdict": vd.get(r.get("verdict"), "—"),
-            "What they flagged": r.get("concern") or "—",
-            "How to make it better": r.get("improve") or "—",
-        } for r in revs])
-        st.dataframe(rtab, use_container_width=True, hide_index=True)
+        rdf = pd.DataFrame(revs)
+        if "score" not in rdf.columns:
+            rdf["score"] = None
+        rows = []
+        for crit, g in rdf.groupby("reviewer", sort=False):
+            sc = pd.to_numeric(g["score"], errors="coerce")
+            per = ", ".join(f"{model_label(r.get('model'))} {int(r['score']) if pd.notna(r.get('score')) else '—'}"
+                            for _, r in g.iterrows())
+            rows.append({
+                "Criterion": crit,
+                "Avg score": f"{int(round(sc.mean()))}/100" if sc.notna().any() else "—",
+                "Each model's score": per,
+                "Flagged it": int((g["verdict"] == "fail").sum()),
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        notes = [f"**{r.get('reviewer')}** ({model_label(r.get('model'))}): {r.get('concern')}"
+                 for r in revs if (r.get("concern") or "").strip()]
+        sugg = list(dict.fromkeys(r.get("improve") for r in revs if (r.get("improve") or "").strip()))
+        if notes:
+            with st.expander(f"⚠️ Concerns raised ({len(notes)})"):
+                for n in notes[:20]:
+                    st.markdown(f"- {n}")
+        if sugg:
+            with st.expander(f"💡 Suggestions to improve ({len(sugg)})"):
+                for sline in sugg[:20]:
+                    st.markdown(f"- {sline}")
     else:
         st.caption("No reviewer scores for this message.")
 

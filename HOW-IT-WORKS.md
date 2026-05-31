@@ -61,10 +61,18 @@ and **(3) a safety guardrail** — anything heinous, cringe, false, or clippable
 against-you if it leaks beyond the target. A message is **not** docked for failing to
 court groups outside its target — that's the point of tailoring, not a flaw. Power and
 tailoring set the headline 0–100 score; the guardrail is a hard **cap**, so a real
-liability can't be bought back with good writing. The five models **rotate across the
-three axes every simulation**, so over a run every model scores every axis — a panel far
-harder to fool than any single critic, with no one model's bias stuck on any one axis.
-They review; they never rewrite.
+liability can't be bought back with good writing. They review; they never rewrite.
+
+**Why you can trust a score (from first principles).** A message is **drafted once**, then
+**reviewed several times** — and each pass **reshuffles which model judges which criterion**.
+With five models and three criteria, it takes five passes for every model to take a turn on
+every criterion, so each message ends up with **fifteen independent model-judgments** — every
+one of the five models scoring every one of the three criteria. No single model's taste can
+decide a verdict; a flag only sticks when models agree across the rotation. That's what makes
+the panel far harder to fool than any one critic — and why each message on the results page
+shows all five models' scores on each criterion, not a single opinion. (We draft a few hundred
+distinct messages and rotate the reviewers over them, rather than paying to draft thousands —
+the expensive step is the drafting, not the reviewing.)
 
 ### 5. The objective checks
 Alongside the reviewers, instant rule checks catch the black-and-white failures
