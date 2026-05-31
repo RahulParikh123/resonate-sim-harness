@@ -43,10 +43,16 @@ def score_platform(sim: SimResult, rubric: RubricConfig | None = None) -> list[F
                         source="platform")
             )
 
-    for flag in sim.advisory_flags:
-        sev = _ADVISORY_SEVERITY.get(flag, Severity.LOW)
-        out.append(
-            Finding(f"advisory:{flag}", sev, False, f"Backend attached advisory flag '{flag}'.", source="platform")
-        )
+    for raw in sim.advisory_flags or []:
+        # The backend may attach flags as plain strings OR as dicts (e.g.
+        # {"type": "stance_drift", "detail": "..."}). Normalize to a string code.
+        if isinstance(raw, dict):
+            code = str(raw.get("type") or raw.get("code") or raw.get("name") or raw.get("flag") or "advisory")
+            detail = str(raw.get("detail") or raw.get("message") or "")
+        else:
+            code, detail = str(raw), ""
+        sev = _ADVISORY_SEVERITY.get(code, Severity.LOW)
+        msg = f"Backend attached advisory flag '{code}'." + (f" {detail}" if detail else "")
+        out.append(Finding(f"advisory:{code}", sev, False, msg, source="platform"))
 
     return out

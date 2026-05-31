@@ -29,9 +29,9 @@ models = ["claude", "gpt", "gemini", "grok", "kimi"]
 channels = ["email", "sms", "speech", "mail", "radio", "tv", "social"]
 intents = ["fresh_draft", "revision", "discussion", "edge_case"]
 repeats_per_cell = 1
-max_drafts = 600            # ceiling on distinct Grok drafts (Grok's $20 cap usually binds first)
+max_drafts = 250            # distinct Grok drafts (~$12 with preflight) — rotations still reach ~1,200 sims
 rotations_per_draft = 5     # re-review each draft under up to 5 rotated model↔job assignments
-max_sims = 3000             # ceiling on total simulations (= drafts × rotations)
+max_sims = 3000             # ceiling on total simulations (the Grok-as-reviewer $10 cap binds first, ~1,200)
 
 [budgets]
 per_model_usd = 10.0        # HARD $10 cap on EACH reviewing model (Claude, GPT, Gemini, Grok, Kimi)

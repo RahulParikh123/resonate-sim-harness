@@ -128,6 +128,17 @@ async def main() -> int:
                   f"stopping after {len(drafted)} of {len(briefs)} messages.")
             break
 
+    # Cache successful drafts to disk BEFORE the (paid) review phase, so a crash or a
+    # later criteria change can re-score the same drafts without paying to re-draft.
+    try:
+        cache_path = ROOT / "runs" / f"drafts-{cfg.name}.json"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        ok_cache = [dataclasses.asdict(s) for s, e in drafted if not e and (s.content_text or "").strip()]
+        cache_path.write_text(json.dumps(ok_cache))
+        print(f"  cached {len(ok_cache)} drafts → runs/{cache_path.name} (safe from crashes / reusable)")
+    except Exception:
+        pass
+
     # 3. expand drafts → simulations under the ROTATING council, score each.
     ok_drafts = [sim for sim, err in drafted if not err and (sim.content_text or "").strip()]
     jobs = cfg.jobs
@@ -163,20 +174,24 @@ async def main() -> int:
             async with rsem:
                 if stop["capped"]:
                     return None
-                sim = dataclasses.replace(draft_sim, id=f"{draft_sim.id}-r{r}")
-                v = score_sim(sim, cfg.rubric)
-                revs = await review_draft(sim, rotate_reviewers(jobs, models, offset), budget=budget)
-                v.reviews = revs
-                v.quality_score = aggregate_quality(revs)
-                v.findings.extend(reviews_to_findings(revs))
+                try:
+                    sim = dataclasses.replace(draft_sim, id=f"{draft_sim.id}-r{r}")
+                    v = score_sim(sim, cfg.rubric)
+                    revs = await review_draft(sim, rotate_reviewers(jobs, models, offset), budget=budget)
+                    v.reviews = revs
+                    v.quality_score = aggregate_quality(revs)
+                    v.findings.extend(reviews_to_findings(revs))
+                except Exception as e:  # one bad sim must never sink the whole run
+                    print(f"  ⚠️  sim {draft_sim.id} r{r} failed ({type(e).__name__}: {str(e)[:70]}) — skipped.")
+                    return None
                 m = capped_model()
                 if m and not stop["capped"]:
                     stop["capped"] = True
                     print(f"  ⚠️  reviewing model '{m}' hit its ${budget.cap_for(m):.0f} cap — stopping the rotation.")
                 return v
 
-        results = await asyncio.gather(*[simulate(s, o, r) for s, o, r in units])
-        verdicts = [v for v in results if v is not None]
+        results = await asyncio.gather(*[simulate(s, o, r) for s, o, r in units], return_exceptions=True)
+        verdicts = [v for v in results if v is not None and not isinstance(v, BaseException)]
         # Keep deterministic verdicts for drafts that errored/refused (so they still surface).
         verdicts += [score_sim(sim, cfg.rubric) for sim, err in drafted
                      if err or not (sim.content_text or "").strip()]

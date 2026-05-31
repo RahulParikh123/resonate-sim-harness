@@ -155,6 +155,17 @@ def load(run_id: int):
     return s.sims_for_run(run_id), s.findings_for_run(run_id), s.clusters_for_run(run_id)
 
 
+# Friendly labels for the five council models (the keys stored in reviews_json / cost summary).
+MODEL_LABELS = {
+    "claude": "Claude (Anthropic)", "gpt": "GPT (OpenAI)", "gemini": "Gemini (Google)",
+    "grok": "Grok (xAI)", "kimi": "Kimi (Moonshot)",
+}
+
+
+def model_label(m: str) -> str:
+    return MODEL_LABELS.get(m, m or "—")
+
+
 def breakdown(df: pd.DataFrame, col: str, humanizer=None) -> pd.DataFrame:
     d = df.copy()
     d[col] = d[col].replace("", "—")
@@ -168,7 +179,7 @@ def breakdown(df: pd.DataFrame, col: str, humanizer=None) -> pd.DataFrame:
 
 def reviews_of(df: pd.DataFrame) -> pd.DataFrame:
     """Flatten the per-message reviews_json into rows for aggregation."""
-    cols = ["sim_id", "reviewer", "score", "verdict", "concern", "improve"]
+    cols = ["sim_id", "reviewer", "model", "score", "verdict", "concern", "improve"]
     if df.empty or "reviews_json" not in df.columns:
         return pd.DataFrame(columns=cols)
     rows = []
@@ -236,12 +247,21 @@ def page_results(store: Store) -> None:
     cc3.metric("Grok drafting", f"${backend_cost:.4f}", help=f"the platform's own spend · cap ${cfg.get('backend_cap_usd', '—')}")
     cc4.metric("Per message", f"${(total_cost / total):.4f}" if total else "$0.0000")
     by_service = cfg.get("backend_by_service") or {}
-    if by_service or council_cost:
-        rows = [{"Provider / model": k, "Cost": f"${v:.4f}"} for k, v in sorted(by_service.items(), key=lambda kv: -kv[1])]
-        rows.append({"Provider / model": "Reviewers (council, all providers)", "Cost": f"${council_cost:.4f}"})
+    by_model = cfg.get("council_by_model") or {}
+    per_cap = cfg.get("per_model_cap_usd")
+    if by_service or by_model or council_cost:
+        rows = [{"What": f"Grok drafting · {k}", "Cost": f"${v:.4f}", "Cap": f"${cfg.get('backend_cap_usd', '—')}"}
+                for k, v in sorted(by_service.items(), key=lambda kv: -kv[1])]
+        if by_model:
+            for m, v in sorted(by_model.items(), key=lambda kv: -kv[1]):
+                rows.append({"What": f"Reviewer · {model_label(m)}", "Cost": f"${v:.4f}",
+                             "Cap": f"${per_cap}" if per_cap else "—"})
+        else:
+            rows.append({"What": "Reviewers (council, all providers)", "Cost": f"${council_cost:.4f}", "Cap": "—"})
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption("Reviewers = your council keys (billed to you, via LiteLLM). Grok drafting = the platform's own "
-               "spend. The caps are hard ceilings — a run stops if it would exceed them.")
+    st.caption("Each of the five models is a separate reviewer ledger (your council keys, billed to you, capped per "
+               "model). Grok drafting is the platform's own spend, on its own cap. Both are hard ceilings — the run "
+               "stops if it would exceed them.")
     st.divider()
 
     st.subheader("What went wrong, most important first")
@@ -258,19 +278,33 @@ def page_results(store: Store) -> None:
 
     st.subheader("Results broken down")
     if not view.empty:
-        col_rev, col_ch, col_rt = st.columns(3)
-        with col_rev:
-            st.markdown("**By reviewer** — avg score + concerns")
-            rv = reviews_of(view)
+        rv = reviews_of(view)
+        if not rv.empty:
+            rv["flag"] = rv["verdict"].isin(["concern", "fail"])
+        col_job, col_model = st.columns(2)
+        with col_job:
+            st.markdown("**By reviewer job** — the point of view")
             if rv.empty:
                 st.caption("Reviewer scores appear after a live run with reviewers turned on.")
             else:
-                rv["flag"] = rv["verdict"].isin(["concern", "fail"])
-                rb = (rv.groupby("reviewer").agg(avg=("score", "mean"), Concerns=("flag", "sum")).reset_index())
+                rb = rv.groupby("reviewer").agg(avg=("score", "mean"), Concerns=("flag", "sum")).reset_index()
                 rb["Avg score"] = rb["avg"].round().astype("Int64")
-                rb = rb.rename(columns={"reviewer": "Reviewer"})[["Reviewer", "Avg score", "Concerns"]].sort_values("Avg score")
-                st.bar_chart(rb.set_index("Reviewer")["Avg score"], height=200)
+                rb = rb.rename(columns={"reviewer": "Job"})[["Job", "Avg score", "Concerns"]].sort_values("Avg score")
+                st.bar_chart(rb.set_index("Job")["Avg score"], height=200)
                 st.dataframe(rb, use_container_width=True, hide_index=True)
+        with col_model:
+            st.markdown("**By model** — each one rotates across all 5 jobs")
+            if rv.empty or "model" not in rv or rv["model"].isna().all():
+                st.caption("Per-model scores appear after a live run with the rotating council.")
+            else:
+                mb = (rv.dropna(subset=["model"]).groupby("model")
+                      .agg(avg=("score", "mean"), Reviews=("score", "count"), Concerns=("flag", "sum")).reset_index())
+                mb["Avg score"] = mb["avg"].round().astype("Int64")
+                mb["Model"] = mb["model"].map(model_label)
+                mb = mb[["Model", "Avg score", "Reviews", "Concerns"]].sort_values("Avg score")
+                st.bar_chart(mb.set_index("Model")["Avg score"], height=200)
+                st.dataframe(mb, use_container_width=True, hide_index=True)
+        col_ch, col_rt = st.columns(2)
         for box, col, head in ((col_ch, "channel", "Channel"), (col_rt, "intent_type", "Request type")):
             with box:
                 st.markdown(f"**By {head.lower()}**")
@@ -279,6 +313,8 @@ def page_results(store: Store) -> None:
                 st.bar_chart(g.set_index(col)["clean_%"], height=200)
                 st.dataframe(g.rename(columns={col: head, "sims": "Messages", "flagged": "Flagged",
                                                "clean_%": "Clean %"}), use_container_width=True, hide_index=True)
+        st.caption("Every message is reviewed by all five models in rotating roles. **By job** = how each point of "
+                   "view scores; **By model** = how each model behaves across the jobs it played.")
     st.divider()
 
     st.subheader("Every simulated message")
@@ -326,7 +362,8 @@ def page_results(store: Store) -> None:
             for _, r in rv1.iterrows():
                 icon = {"meets": "✅", "fail": "🔴"}.get(r.get("verdict"), "🟠")
                 sc = f"{int(r['score'])}/100" if pd.notna(r.get("score")) else "—"
-                line = f"- {icon} **{r['reviewer']}** · {sc}"
+                played = f" _(played by {model_label(r.get('model'))})_" if r.get("model") else ""
+                line = f"- {icon} **{r['reviewer']}**{played} · {sc}"
                 if r.get("concern"):
                     line += f" · concern: {r['concern']}"
                 if r.get("improve"):
