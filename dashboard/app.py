@@ -113,9 +113,10 @@ ABOUT_HTML = """
   cap, so a genuine liability pulls the score down no matter how good the writing.</p>
   <p>From first principles, here is why you can trust a score. A message is <strong>drafted once</strong>, then
   <strong>reviewed several times</strong> &mdash; and each review pass <strong>reshuffles which model judges
-  which criterion</strong>. With five models and three criteria, it takes five passes for every model to take a
-  turn on every criterion, so each message ends up with <strong>fifteen independent model-judgments</strong> &mdash;
-  every one of the five models scoring every one of the three criteria. No single model&rsquo;s taste can decide a
+  which criterion</strong>. Each pass uses three of the five models (two sit out), and with five models and
+  three criteria it takes exactly five passes for every model to take a turn on every criterion &mdash; so each
+  message ends up with <strong>fifteen independent model-judgments</strong>, every one of the five models scoring
+  every one of the three criteria exactly once. No single model&rsquo;s taste can decide a
   verdict; a flag only sticks when models agree across the rotation. That is what makes this panel far harder to
   fool than any one critic &mdash; and why, on the results page, each message shows all five models&rsquo; scores
   on each criterion rather than a single opinion.</p>
@@ -723,10 +724,11 @@ def page_messages(store: Store) -> None:
         "(email, SMS, speeches, mail, radio, TV, social) — and let the platform draft each one exactly as it "
         "would for a real customer. Every draft is then read by a council of **five models** (Claude, GPT, "
         "Gemini, Grok, Kimi) on **three criteria**: is the message *powerful*, is it genuinely *tailored* to its "
-        "target voters, and is it *safe to ship*. Here's the key idea: each message is reviewed **several times, "
-        "rotating which model judges which criterion**, so across the passes **all five models weigh in on every "
-        "criterion** — no single model's bias can decide a verdict. **The table below is one row per distinct "
-        "message.** The columns to watch are **Flagged?** (what needs a human) and **Where** (which surface is "
+        "target voters, and is it *safe to ship*. Here's the key idea: each message is reviewed across **five "
+        "passes**, and each pass deals the three criteria to **three different models** (two sit out). Over the "
+        "five passes the rotation covers all fifteen model×criterion pairings, so **every model judges every "
+        "criterion exactly once** — no single model's bias can decide a verdict. **The table below is one row "
+        "per distinct message.** The columns to watch are **Flagged?** (what needs a human) and **Where** (which surface is "
         "producing the misses); **sort by flagged** to put the must-fix items on top, and **click any row** for "
         "the full request, the platform's follow-up questions, the message itself, and how all five models scored "
         "it across the three criteria.")
@@ -855,9 +857,10 @@ def page_messages(store: Store) -> None:
     st.markdown("**3 · The message Grok produced**" + (f"  ·  quality {int(q)}/100" if pd.notna(q) else ""))
     st.code((srow.get("content_text") or "").strip() or "(no draft text stored)", language=None)
 
-    st.markdown("**4 · The five review passes** — each pass re-deals the three criteria to different models, so "
-                "across the passes every model plays every criterion. Each row: *which pass, which criterion "
-                "(persona), the model playing it, and its score.*")
+    st.markdown("**4 · The five review passes** — each pass scores the 3 criteria with **3 different models** "
+                "(2 of the 5 sit out that pass). Over the 5 passes the rotation covers all 15 model×criterion "
+                "pairings, so **every model judges every criterion exactly once** (each model works 3 of the 5 "
+                "passes). Each row: *which pass, which criterion (persona), the model playing it, its score.*")
     try:
         revs = json.loads(srow.get("reviews_json") or "[]")
     except Exception:
