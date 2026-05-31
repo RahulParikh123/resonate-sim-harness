@@ -11,7 +11,7 @@ attention — so you catch bad output **before** the platform touches a real cam
 
 ---
 
-## The five-model council and their jobs
+## The five-model council and their three scoring axes
 
 The platform **always drafts with Grok** — the harness never changes that. The
 council is a panel of **reviewers** that read each Grok draft and score it. They
@@ -30,33 +30,37 @@ council is a panel of **reviewers** that read each Grok draft and score it. They
 We run the **fast/cheap** variant of each so thousands of reviews fit the budget.
 Swap in the flagships (in `harness/llm.py`) for a smaller, sharper run.
 
-**Five jobs — the points of view each message is judged from:**
+**Three scoring axes — what a campaign actually optimizes when it tailors to a group.**
+Every message is scored **for its target segment** — strengthened for that group, never
+softened to court people who won't receive it. Two axes reward; one gates:
 
-1. **Target-segment voter** — the group the message is tailored to. Does it actually land for us, or is it a generic pander?
-2. **Skeptical swing voter** — undecided, distrustful. Does it move me, or read as spin?
-3. **Hostile / opposition reader** — an opponent hunting for ammunition. What could backfire or be clipped out of context?
-4. **Message-quality coach** — a copy chief. Is this the *best* version? Clarity, hook, single ask, length-fit.
-5. **Compliance & legal guardrail** — a campaign lawyer. Missing "Paid for by", unverified claims, FEC/FCC/TCPA exposure.
+1. **Message power** *(reward)* — how strong/compelling is it for the target? Hook, clarity, single ask, memorability, punch.
+2. **Tailoring to the target** *(reward)* — does it genuinely land for that specific group? Real resonance, not stereotype, not generic.
+3. **Safety guardrail** *(gate)* — nothing heinous, cringe, false, or clippable-and-used-against-you if it leaks beyond the target.
 
-### Jobs rotate across models every run — for true diversity
+Headline score = the **mean of the two reward axes**. The guardrail is a **hard cap**,
+not an average: a real liability pulls the score down no matter how well the copy reads —
+you can't buy back a backfire risk with good writing.
 
-Each simulation assigns the five jobs to the five models, and **the assignment
+### The 3 axes rotate across the 5 models every run — for true diversity
+
+Each simulation assigns the three axes to three of the five models, and **the assignment
 rotates every simulation** (a Latin square):
 
 ```
-              Target   Swing    Opposition  Coach    Compliance
-sim #1 (off 0) Claude   GPT      Gemini      Grok     Kimi
-sim #2 (off 1) GPT      Gemini   Grok        Kimi     Claude
-sim #3 (off 2) Gemini   Grok     Kimi        Claude   GPT
-sim #4 (off 3) Grok     Kimi     Claude      GPT      Gemini
-sim #5 (off 4) Kimi     Claude   GPT         Gemini   Grok
+               Power    Tailoring  Guardrail
+sim #1 (off 0)  Claude   GPT        Gemini
+sim #2 (off 1)  GPT      Gemini     Grok
+sim #3 (off 2)  Gemini   Grok       Kimi
+sim #4 (off 3)  Grok     Kimi       Claude
+sim #5 (off 4)  Kimi     Claude     GPT
 ```
 
-Over a full cycle **every model plays every job exactly once**, so no single
-model's bias colours any single point of view. Each reviewer returns a **0–100
-score**, an optional **concern**, and one concrete **"how to improve"** — reward,
-not just punishment. Set `rotations_per_draft` to re-review each draft under
-several rotations and multiply drafts into thousands of simulations.
+Over a full cycle **every model scores every axis**, so no single model's bias colours
+any single axis. Each reviewer returns a **0–100 score**, a verdict, an optional
+**concern**, and one concrete **"how to improve"** — reward, not just punishment. Set
+`rotations_per_draft` to re-review each draft under several rotations and multiply a few
+hundred drafts into thousands of simulations.
 
 ---
 
@@ -142,8 +146,8 @@ Each Grok draft is scored in three layers, cheapest first:
    feedback-in-chat that wrongly changed the draft.
 2. **Platform-native signals**: what Resonate already returns
    (`stance_drift_score`, `advisory_flags`, `refused`).
-3. **The rotating review council**: the five models scoring 0–100 from their
-   rotated points of view, plus a "how to improve" suggestion.
+3. **The rotating review council**: the five models scoring the three axes (power,
+   tailoring, guardrail) 0–100 for the target segment, plus a "how to improve" suggestion.
 
 Flagging is **cluster-first**: problems are grouped so you review ~30 patterns,
 not thousands of rows. Everything is plain-English in the dashboard — no internal

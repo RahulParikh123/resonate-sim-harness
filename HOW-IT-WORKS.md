@@ -9,9 +9,9 @@ This explains every layer of the system, no technical background needed.
 Resonate writes political-campaign messaging, and it always uses **Grok** to do
 the writing. Before any of that reaches a real campaign, this platform feeds
 Resonate thousands of realistic campaign requests, lets Grok draft each one, and
-then hands every draft to a **council of reviewers** — different AI models, each
-role-playing a critic with its own standards — to judge whether it's up to
-scratch. The reviewers never rewrite anything; they only review. Then the bad
+then hands every draft to a **council of five models** that score it — for the
+segment it's tailored to — on three axes: message power, tailoring to that group,
+and a safety guardrail. The reviewers never rewrite anything; they only review. Then the bad
 results are grouped into patterns and shown to you, worst and most-frequent first.
 
 ---
@@ -24,9 +24,9 @@ results are grouped into patterns and shown to you, worst and most-frequent firs
    exactly as it would for a real customer. *We never change this.*
 3. **Instant rule checks run (free).** Objective checks scan the draft: leftover
    placeholders, invented links, wrong length for the channel, missing "Paid for by."
-4. **The review council weighs in.** Several *different* models, each playing a
-   critic with its own standards, read the draft and return a verdict — meets,
-   concern, or fail — with a one-line reason. They do **not** rewrite it.
+4. **The review council weighs in.** The five models, rotating across the three
+   axes (power, tailoring, guardrail), score the draft 0–100 *for its target
+   segment* and return a verdict — meets, concern, or fail. They do **not** rewrite it.
 5. **It gets filed.** Pass or fail, the result is saved with its channel, request
    type, and every reviewer's verdict.
 6. **You see patterns.** Failures are grouped and ranked, with breakdowns by
@@ -53,15 +53,18 @@ drives the real API and only ever asks it to *write*; it can never send a messag
 to a real voter.
 
 ### 4. The review council — the heart of it
-A panel of different models, each role-playing a critic with its **own criteria**:
-a compliance-and-legal hawk with low risk tolerance; a punchy persuader who rewards
-bold copy and dislikes bland writing; a moderate who flags inflammatory or offensive
-language; a guardian of the candidate's voice and positions. Each reviews the same
-Grok draft against its own standard and never rewrites it. Because the standards
-differ on purpose, a draft can pass one reviewer and fail another — **that split is
-the signal**, telling you how a message holds up against different appetites for
-tone and risk. Using diverse models makes the panel far harder to fool than any
-single critic.
+Every message is tailored to a **specific target segment**, and the council scores it
+**for that group** on the three things a campaign actually optimizes when it tailors:
+**(1) message power** — how strong/compelling it is for the target; **(2) tailoring** —
+whether it genuinely lands for that group rather than reading generic or stereotyped;
+and **(3) a safety guardrail** — anything heinous, cringe, false, or clippable-and-used-
+against-you if it leaks beyond the target. A message is **not** docked for failing to
+court groups outside its target — that's the point of tailoring, not a flaw. Power and
+tailoring set the headline 0–100 score; the guardrail is a hard **cap**, so a real
+liability can't be bought back with good writing. The five models **rotate across the
+three axes every simulation**, so over a run every model scores every axis — a panel far
+harder to fool than any single critic, with no one model's bias stuck on any one axis.
+They review; they never rewrite.
 
 ### 5. The objective checks
 Alongside the reviewers, instant rule checks catch the black-and-white failures

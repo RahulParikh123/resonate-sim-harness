@@ -102,16 +102,17 @@ ABOUT_HTML = """
   models &mdash; Claude, GPT, Gemini, and others &mdash; but here they are not writers. They are reviewers.
   Each one role-plays a critic with its own standards, reads what Grok produced, and decides whether it meets
   those standards. They never rewrite the draft; they only judge it.</p>
-  <p>Crucially, most reviewers <strong>proxy a voter</strong> the message is trying to reach: the specific
-  segment it&rsquo;s tailored to (does it actually land for us, or is it a generic pander?), a skeptical
-  swing voter, an energized base voter, and a hostile opposition reader hunting for ammunition. Two more cover
-  craft (a message-quality coach who asks &ldquo;is this the best possible version, and how do we improve it?&rdquo;)
-  and a legal guardrail. Each reviewer <strong>scores the draft 0&ndash;100 from its point of view, names any
-  concern, and suggests one concrete improvement</strong> &mdash; and it judges broadly, weighing not just the
-  final words but whether the platform asked the right clarifying questions first. The same Grok draft can score
-  well with one reviewer and poorly with another, and that split is exactly the point: it tells you how a message
-  holds up against different standards, so you can decide what fits your campaign&rsquo;s appetite for tone and
-  risk. Using different lab models as the reviewers makes the panel far harder to fool than any single critic.</p>
+  <p>Every message is tailored to a <strong>specific target segment</strong> &mdash; the group it is written for
+  &mdash; and the reviewers score it <strong>for that group</strong>, on the three things a campaign actually
+  optimizes when it tailors a message: <strong>(1) message power</strong> &mdash; how strong and compelling it is
+  for its target; <strong>(2) tailoring</strong> &mdash; whether it genuinely lands for that specific group rather
+  than reading generic or stereotyped; and <strong>(3) a safety guardrail</strong> &mdash; whether anything is
+  heinous, cringe, false, or could be clipped and used against the campaign if it surfaced beyond the target. A
+  message is <em>not</em> penalized for failing to court groups outside its target &mdash; that is the point of
+  tailoring, not a flaw. The first two axes reward and set the headline 0&ndash;100 score; the guardrail is a hard
+  cap, so a genuine liability pulls the score down no matter how good the writing. The five models
+  <strong>rotate across the three axes every simulation</strong>, so over a run every model scores every axis and
+  no single model&rsquo;s bias colours any one axis &mdash; a panel far harder to fool than any single critic.</p>
 
   <h3 style="font-size:1.05rem; margin:1.4em 0 .4em;">What it checks &mdash; two kinds of review</h3>
   <p>The platform examines Grok&rsquo;s draft in two ways. The first is a set of instant, black-and-white rule
@@ -120,13 +121,12 @@ ABOUT_HTML = """
   Is it too long for the format &mdash; an SMS over the limit, or a script that runs past its thirty-second
   slot? Did it drop the legally required &ldquo;Paid for by&rdquo; disclaimer, or word it weakly? These are
   objective, so they run on every draft for free.</p>
-  <p>The second kind is the council of reviewers described above. Each reviewer <strong>scores the draft
-  0&ndash;100</strong> from its point of view, flags any concern in a sentence, and offers <strong>one concrete
-  way to improve it</strong> &mdash; and it judges broadly, including whether the platform asked the right
-  clarifying questions before drafting, not just the final wording. Because the standards differ on purpose, you
-  get a far richer picture than a single thumbs-up or thumbs-down. Nowhere does anything rewrite the draft: the
-  platform&rsquo;s job is to review what Grok produced and tell your team how to make it better &mdash; your
-  team applies the fixes.</p>
+  <p>The second kind is the council described above: the five models <strong>score the draft 0&ndash;100 on the
+  three axes &mdash; power, tailoring, and the safety guardrail &mdash; for its target segment</strong>, each
+  flagging any concern in a sentence and offering <strong>one concrete way to improve it</strong>, judging broadly
+  (including whether the platform asked the right clarifying questions first). Power and tailoring set the score;
+  the guardrail caps it. Nowhere does anything rewrite the draft: the platform reviews what Grok produced and tells
+  your team how to make it better &mdash; your team applies the fixes.</p>
 
   <h3 style="font-size:1.05rem; margin:1.4em 0 .4em;">Run at scale, and run safely</h3>
   <p>This does not happen once. It runs across every combination of model, persona, channel, and request type,
