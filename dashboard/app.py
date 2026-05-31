@@ -210,271 +210,152 @@ def reviews_of(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=cols)
 
 
+def collapse_run(sims, findings):
+    """Collapse rotation passes → ONE row per distinct message, with CONSENSUS severity
+    (a flag sticks only when models agree). Returns (messages_df, findings_df), both keyed to
+    the base message id. Shared by the Messages and Overview pages so their numbers match."""
+    import re as _re
+    df = pd.DataFrame(sims)
+    find_df = pd.DataFrame(findings)
+    if df.empty:
+        return df, find_df
+    for c in ("surface", "target_segment", "brief_intent", "content_text", "preflight_qa_json",
+              "reviews_json", "channel", "intent_type", "severity"):
+        if c not in df.columns:
+            df[c] = ""
+    if "quality_score" not in df.columns:
+        df["quality_score"] = None
+    df["_base"] = df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
+    rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "pass": 0}
+    GUARD = "Safety guardrail"
+    if not find_df.empty:
+        find_df = find_df.copy()
+        find_df["sim_id"] = find_df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
+    rows = []
+    for base, g in df.groupby("_base", sort=False):
+        first = g.iloc[0]
+        allrev = []
+        for _, prow in g.iterrows():
+            mm = _re.search(r"-r(\d+)$", str(prow["sim_id"]))
+            passno = (int(mm.group(1)) + 1) if mm else 1
+            try:
+                for rv in json.loads(prow["reviews_json"] or "[]"):
+                    rv["pass"] = passno
+                    allrev.append(rv)
+            except Exception:
+                pass
+        guard_fails = sum(1 for rv in allrev if rv.get("verdict") == "fail"
+                          and (rv.get("role") == "guardrail" or rv.get("reviewer") == GUARD))
+        crit_fails: dict = {}
+        for rv in allrev:
+            if rv.get("verdict") == "fail" and not (rv.get("role") == "guardrail" or rv.get("reviewer") == GUARD):
+                crit_fails[rv.get("reviewer")] = crit_fails.get(rv.get("reviewer"), 0) + 1
+        if guard_fails >= 3:
+            rev_sev = "critical"
+        elif guard_fails >= 1 or (crit_fails and max(crit_fails.values()) >= 2):
+            rev_sev = "high"
+        else:
+            rev_sev = "pass"
+        obj_sev = "pass"
+        if not find_df.empty:
+            obj = find_df[(find_df["sim_id"] == base) & (find_df["dimension"] != "reviewer_concern")]
+            if not obj.empty:
+                obj_sev = max(obj["severity"], key=lambda s: rank.get(s, 0))
+        sev = rev_sev if rank.get(rev_sev, 0) >= rank.get(obj_sev, 0) else obj_sev
+        qs = g["quality_score"].dropna()
+        rows.append({
+            "sim_id": base, "channel": first["channel"], "intent_type": first["intent_type"],
+            "surface": first["surface"], "target_segment": first["target_segment"],
+            "brief_intent": first["brief_intent"], "content_text": first["content_text"],
+            "preflight_qa_json": first["preflight_qa_json"], "severity": sev,
+            "quality_score": round(qs.mean(), 1) if len(qs) else None,
+            "reviews_json": json.dumps(allrev),
+        })
+    out = pd.DataFrame(rows).reset_index(drop=True)
+    out["Message"] = [f"Message {i + 1}" for i in range(len(out))]
+    return out, find_df
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# RESULTS
+# OVERVIEW & ISSUES  (qualitative, plain-English summary — no charts)
 # ══════════════════════════════════════════════════════════════════════════════
 def page_results(store: Store) -> None:
     runs = store.list_runs()
-    st.title("🧭 Resonate Simulation Harness")
-    st.caption("How Grok's draft messages hold up before a real campaign — read by a council of reviewers "
-               "against their own standards, and broken down by reviewer, channel, and request type.")
+    st.title("📋 Overview & issues")
+    st.caption("A plain-English read on how the run went and what we found. The message-by-message detail "
+               "lives in **📨 Simulated messages**.")
     if not runs:
-        st.warning("No runs yet. Generate one:  `python3 scripts/run.py --config configs/example.harness.toml`")
+        st.warning("No runs yet.")
+        return
+    runs = sorted(runs, key=lambda r: r["id"], reverse=True)
+    run_labels = {f"Run {r['id']} · {r['sim_count']} messages": r for r in runs}
+    run = run_labels[st.sidebar.selectbox("Run", list(run_labels), key="ov_run")]
+    sims, findings, _ = load(run["id"])
+    df, find_df = collapse_run(sims, findings)
+    cfg = json.loads(run.get("config") or "{}")
+    if df.empty:
+        st.info("No messages in this run.")
         return
 
-    runs = sorted(runs, key=lambda r: r["id"], reverse=True)  # newest run first (default selection)
-    run_labels = {f"Run {r['id']} · {humanize_mode(r['mode'])} · {r['sim_count']} messages": r for r in runs}
-    run = run_labels[st.sidebar.selectbox("Run", list(run_labels))]
-    sims, findings, clusters = load(run["id"])
-    sims_df, find_df = pd.DataFrame(sims), pd.DataFrame(findings)
+    N = len(df)
+    must = int((df["severity"] == "critical").sum())
+    review = int((df["severity"] == "high").sum())
+    okc = N - must - review
+    avg_q = df["quality_score"].dropna().mean()
 
-    st.sidebar.subheader("Filters")
-    def opts(c):
-        return sorted(x for x in sims_df[c].fillna("").replace("", "—").unique()) if not sims_df.empty else []
-    fc = st.sidebar.multiselect("Channel", opts("channel"))
-    fi = st.sidebar.multiselect("Request type", [humanize_intent(x) for x in opts("intent_type")])
-    fs = st.sidebar.multiselect("Result", ["critical", "high", "medium", "low", "pass"])
+    def pc(x):
+        return round(100 * x / N) if N else 0
 
-    view = sims_df.copy()
-    if not view.empty:
-        if fc:
-            view = view[view["channel"].isin(fc)]
-        if fi:
-            view = view[view["intent_type"].map(humanize_intent).isin(fi)]
-        if fs:
-            view = view[view["severity"].isin(fs)]
-
-    cfg = json.loads(run.get("config") or "{}")
-    total = len(view)
-    sev = view["severity"] if total else pd.Series(dtype=str)
-    must_fix = int((sev == "critical").sum())   # ship-blockers: guardrail fail / empty / fabricated
-    defects = int((sev == "high").sum())          # fixable defects: leftover placeholders, chat-routing
-    flagged = must_fix + defects
-    avg_q = view["quality_score"].dropna() if total and "quality_score" in view.columns else pd.Series(dtype=float)
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Messages", total)
-    c2.metric("🚩 Must-fix", must_fix, f"{round(100 * must_fix / total) if total else 0}% of run", delta_color="off")
-    c3.metric("Fixable defects", defects, f"{round(100 * defects / total) if total else 0}% of run", delta_color="off")
-    c4.metric("Avg quality", f"{round(avg_q.mean())}/100" if len(avg_q) else "—")
-    c5.metric("Total cost", f"${cfg.get('total_usd', cfg.get('council_spent_usd', 0.0)):.2f}")
-    st.divider()
-
-    st.markdown("**💵 What this run cost**")
-    council_cost = cfg.get("council_spent_usd", 0.0)
-    backend_cost = cfg.get("backend_spent_usd", 0.0)
-    total_cost = cfg.get("total_usd", council_cost + backend_cost)
-    cc1, cc2, cc3, cc4 = st.columns(4)
-    cc1.metric("Total", f"${total_cost:.4f}")
-    cc2.metric("Reviewers", f"${council_cost:.4f}", help=f"your council keys · cap ${cfg.get('council_cap_usd', '—')}")
-    cc3.metric("Grok drafting", f"${backend_cost:.4f}", help=f"the platform's own spend · cap ${cfg.get('backend_cap_usd', '—')}")
-    cc4.metric("Per message", f"${(total_cost / total):.4f}" if total else "$0.0000")
-    by_service = cfg.get("backend_by_service") or {}
-    by_model = cfg.get("council_by_model") or {}
-    per_cap = cfg.get("per_model_cap_usd")
-    if by_service or by_model or council_cost:
-        rows = [{"What": f"Grok drafting · {k}", "Cost": f"${v:.4f}", "Cap": f"${cfg.get('backend_cap_usd', '—')}"}
-                for k, v in sorted(by_service.items(), key=lambda kv: -kv[1])]
-        if by_model:
-            for m, v in sorted(by_model.items(), key=lambda kv: -kv[1]):
-                rows.append({"What": f"Reviewer · {model_label(m)}", "Cost": f"${v:.4f}",
-                             "Cap": f"${per_cap}" if per_cap else "—"})
-        else:
-            rows.append({"What": "Reviewers (council, all providers)", "Cost": f"${council_cost:.4f}", "Cap": "—"})
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption("Each of the five models is a separate reviewer ledger (your council keys, billed to you, capped per "
-               "model). Grok drafting is the platform's own spend, on its own cap. Both are hard ceilings — the run "
-               "stops if it would exceed them.")
-    st.divider()
-
-    st.subheader("What went wrong, most important first")
-    if clusters:
-        cl = pd.DataFrame(clusters)
-        cl["Severity"] = cl["severity"].map(humanize_severity)
-        cl["Issue"] = cl["dimension"].map(label)
-        cl["What it means"] = cl["dimension"].map(describe)
-        cl = cl.sort_values("size", ascending=False)
-        st.dataframe(cl[["Severity", "Issue", "size", "What it means"]].rename(columns={"size": "How many"}),
-                     use_container_width=True, hide_index=True)
+    st.subheader("How the run went")
+    if pc(must) <= 5:
+        health = "in good shape — very few outright ship-blockers"
+    elif pc(must) <= 15:
+        health = "mostly solid, with a real minority that needs fixing"
     else:
-        st.success("Nothing went wrong in this run. 🎉")
+        health = "showing serious, widespread problems"
+    qword = ("a strong batch" if avg_q >= 75 else "a decent batch" if avg_q >= 60 else "a weak batch") \
+        if pd.notna(avg_q) else ""
+    st.markdown(
+        f"We simulated **{N:,} distinct messages** across the platform's chat interfaces, each reviewed by all "
+        f"five models on three criteria. Overall the platform looks **{health}**. "
+        f"**{must} ({pc(must)}%) are must-fix** — a safety risk the models agreed on, or an unusable draft; "
+        f"**{review} ({pc(review)}%) need a human's review**; and the remaining **{okc} ({pc(okc)}%) are "
+        f"otherwise fine**. The average quality the reviewers gave is "
+        f"**{round(avg_q) if pd.notna(avg_q) else '—'}/100** — {qword}.")
 
-    # Click into any finding to read every instance, in plain English.
-    st.markdown("**🔎 Explore a finding — click in for every instance, in plain English**")
-    fdf = find_df[find_df["sim_id"].isin(view["sim_id"])].copy() if (not find_df.empty and not view.empty) else pd.DataFrame()
-    if fdf.empty:
-        st.caption("No findings to explore in the current view.")
+    st.subheader("What we found")
+    if find_df.empty:
+        st.success("No issues were recorded in this run. 🎉")
     else:
-        msg_of = {sid: f"Message {i + 1}" for i, sid in enumerate(view.reset_index(drop=True)["sim_id"])}
-        surface_of = dict(zip(view["sim_id"], view["surface"].replace("", "—"))) if "surface" in view.columns else {}
-        counts = fdf["dimension"].value_counts()
-        opt_to_dim = {f"{label(d)}  ({n})": d for d, n in counts.items()}
-        pick_f = st.selectbox("Pick an issue to expand", ["—"] + list(opt_to_dim))
-        if pick_f != "—":
-            dim = opt_to_dim[pick_f]
-            st.info(f"**What this means:** {describe(dim)}")
-            sub = fdf[fdf["dimension"] == dim].copy()
-            sub["Message"] = sub["sim_id"].map(msg_of).fillna(sub["sim_id"])
-            sub["Surface"] = sub["sim_id"].map(surface_of).fillna("—") if surface_of else "—"
-            sub["Severity"] = sub["severity"].map(humanize_severity)
-            sub["Who flagged it"] = sub["source"].map(humanize_source) if "source" in sub.columns else "—"
-            tbl = sub[["Message", "Surface", "Severity", "Who flagged it", "detail"]].rename(
-                columns={"detail": "What happened (plain English)"})
-            st.dataframe(tbl, use_container_width=True, hide_index=True)
-            if "evidence" in sub.columns:
-                ev = sub[sub["evidence"].astype(str).str.strip().ne("")]
-                if not ev.empty:
-                    with st.expander(f"Evidence / excerpts ({len(ev)})"):
-                        for _, r in ev.iterrows():
-                            st.markdown(f"- **{msg_of.get(r['sim_id'], r['sim_id'])}**: {r['evidence']}")
-    st.divider()
+        serious = find_df[find_df["severity"].isin(["critical", "high"])]
+        base = serious if not serious.empty else find_df
+        iss = base.groupby("dimension")["sim_id"].nunique().sort_values(ascending=False)
+        st.markdown("The issues that actually drove flags, by how many distinct messages each hit "
+                    "(milder concerns show on each message, not here):")
+        for dim, cnt in iss.head(8).items():
+            st.markdown(f"- **{label(dim)}** — {int(cnt)} messages ({pc(int(cnt))}%). {describe(dim)}")
 
-    st.subheader("Results broken down")
-    if not view.empty:
-        rv = reviews_of(view)
-        if not rv.empty:
-            rv["flag"] = rv["verdict"].isin(["concern", "fail"])
-        col_job, col_model = st.columns(2)
-        with col_job:
-            st.markdown("**By scoring axis** — power · tailoring · guardrail")
-            if rv.empty:
-                st.caption("Reviewer scores appear after a live run with reviewers turned on.")
-            else:
-                rb = rv.groupby("reviewer").agg(avg=("score", "mean"), Concerns=("flag", "sum")).reset_index()
-                rb["Avg score"] = rb["avg"].round().astype("Int64")
-                rb = rb.rename(columns={"reviewer": "Job"})[["Job", "Avg score", "Concerns"]].sort_values("Avg score")
-                # Axis scores cluster closely, so a 0-based bar chart looks flat/broken — show metrics.
-                mcols = st.columns(len(rb)) if len(rb) else [st]
-                for col, (_, row) in zip(mcols, rb.iterrows()):
-                    col.metric(row["Job"], f"{int(row['Avg score'])}/100",
-                               f"{int(row['Concerns'])} concerns", delta_color="off")
-        with col_model:
-            st.markdown("**By model** — each rotates across the 3 axes")
-            if rv.empty or "model" not in rv or rv["model"].isna().all():
-                st.caption("Per-model scores appear after a live run with the rotating council.")
-            else:
-                mb = (rv.dropna(subset=["model"]).groupby("model")
-                      .agg(avg=("score", "mean"), Reviews=("score", "count"), Concerns=("flag", "sum")).reset_index())
-                mb["Avg score"] = mb["avg"].round().astype("Int64")
-                mb["Model"] = mb["model"].map(model_label)
-                mb = mb[["Model", "Avg score", "Reviews", "Concerns"]].sort_values("Avg score")
-                st.bar_chart(mb.set_index("Model")["Avg score"], height=200)
-                st.dataframe(mb, use_container_width=True, hide_index=True)
-        col_ch, col_rt, col_seg = st.columns(3)
-        rows3 = [(col_ch, "channel", "Channel"), (col_rt, "intent_type", "Request type")]
-        if "target_segment" in view.columns:
-            rows3.append((col_seg, "target_segment", "Target segment"))
-        for box, col, head in rows3:
-            with box:
-                st.markdown(f"**By {head.lower()}**")
-                hz = humanize_channel if col == "channel" else (humanize_intent if col == "intent_type" else None)
-                g = breakdown(view, col, hz)
-                st.bar_chart(g.set_index(col)["clean_%"], height=200)
-                st.dataframe(g.rename(columns={col: head, "sims": "Messages", "flagged": "Flagged",
-                                               "clean_%": "Clean %"}), use_container_width=True, hide_index=True)
-        st.caption("Every message is scored on three axes (power, tailoring, guardrail) by models in rotating "
-                   "roles, **for its target segment** — power + tailoring drive the score; the guardrail caps it.")
-    st.divider()
+    st.subheader("What it cost")
+    total = cfg.get("total_usd", 0.0)
+    grok = cfg.get("backend_spent_usd", 0.0)
+    rev = cfg.get("council_spent_usd", 0.0)
+    bm = cfg.get("council_by_model") or {}
+    permodel = ", ".join(f"{model_label(m)} ${v:.2f}" for m, v in sorted(bm.items(), key=lambda kv: -kv[1])) if bm else ""
+    st.markdown(
+        f"This run cost **${total:.2f}** total — **${grok:.2f}** for Grok drafting every message, and "
+        f"**${rev:.2f}** across the five reviewers"
+        + (f" ({permodel})" if permodel else "")
+        + ". Each provider bills to your own keys, and hard caps stop a run before it can exceed your limits. "
+        "To price a different run, use **Change settings & re-run**.")
 
-    st.subheader("Every simulated message")
-    if not view.empty:
-        view = view.reset_index(drop=True)
-        view["Message"] = [f"Message {i + 1}" for i in range(len(view))]
-        def _preview(s):
-            s = str(s or "")
-            return (s[:70] + "…") if len(s) > 70 else (s or "—")
-        disp = pd.DataFrame({
-            "Message": view["Message"],
-            "Surface": view["surface"].replace("", "—") if "surface" in view.columns else "—",
-            "Target": view["target_segment"].replace("", "—") if "target_segment" in view.columns else "—",
-            "Input question": view["brief_intent"].map(_preview) if "brief_intent" in view.columns else "—",
-            "Result": view["severity"].map(humanize_severity),
-            "Quality": view["quality_score"].map(lambda x: f"{int(x)}/100" if pd.notna(x) else "—")
-            if "quality_score" in view.columns else "—",
-            "Channel": view["channel"].map(humanize_channel),
-            "Request type": view["intent_type"].map(humanize_intent),
-            "Issues": view["finding_count"],
-        })
-        st.dataframe(disp, use_container_width=True, hide_index=True)
-
-        id_map = dict(zip(view["Message"], view["sim_id"]))
-        pick = st.selectbox("Open a message", ["—"] + list(view["Message"]))
-        if pick != "—":
-            sid = id_map[pick]
-            srow = view[view["sim_id"] == sid].iloc[0]
-            seg = srow.get("target_segment") or "—"
-            q = srow.get("quality_score")
-            st.markdown(f"### {pick} — {humanize_severity(srow['severity'])}"
-                        + (f" · quality {int(q)}/100" if pd.notna(q) else ""))
-            m1, m2, m3 = st.columns(3)
-            m1.markdown(f"**🗂 Surface (where in Resonate)**  \n{srow.get('surface') or '—'}")
-            m2.markdown(f"**🎯 Target segment**  \n{seg}")
-            m3.markdown(f"**📡 Channel / request**  \n{humanize_channel(srow['channel'])} · {humanize_intent(srow['intent_type'])}")
-            st.markdown("**1 · Input question — what the campaign asked for**")
-            st.info(srow.get("brief_intent") or "—")
-            try:
-                qa = json.loads(srow.get("preflight_qa_json") or "[]")
-            except Exception:
-                qa = []
-            st.markdown("**2 · Follow-up questions the platform asked (and the answers)**")
-            if qa:
-                for x in qa:
-                    st.markdown(f"- *{x.get('q', '')}* → {x.get('a', '')}")
-            else:
-                st.caption("The platform asked no clarifying questions before drafting.")
-            st.markdown("**3 · The message Grok produced**")
-            body = (srow.get("content_text") or "").strip()
-            st.code(body if body else "(no draft text stored for this message)", language=None)
-            st.markdown("**4 · Objective checks**")
-            obj = find_df[(find_df["sim_id"] == sid) & (find_df["dimension"] != "reviewer_concern")] \
-                if not find_df.empty else pd.DataFrame()
-            if obj.empty:
-                st.caption("Passed every objective check that's turned on.")
-            for _, r in obj.iterrows():
-                st.markdown(f"- {SEV_EMOJI.get(r['severity'], '')} **{label(r['dimension'])}** — {r['detail']}"
-                            + (f"  \n  ↳ {r['evidence']}" if r["evidence"] else ""))
-            st.markdown("**5 · Reviewer scores & suggestions** (5 models, rotating across the 3 axes)")
-            rv1 = reviews_of(view)
-            rv1 = rv1[rv1["sim_id"] == sid] if not rv1.empty else rv1
-            if rv1.empty:
-                st.caption("Reviewer scores appear after a live run.")
-            for _, r in rv1.iterrows():
-                icon = {"meets": "✅", "fail": "🔴"}.get(r.get("verdict"), "🟠")
-                sc = f"{int(r['score'])}/100" if pd.notna(r.get("score")) else "—"
-                played = f" _(played by {model_label(r.get('model'))})_" if r.get("model") else ""
-                line = f"- {icon} **{r['reviewer']}**{played} · {sc}"
-                if r.get("concern"):
-                    line += f" · concern: {r['concern']}"
-                if r.get("improve"):
-                    line += f"  \n  ↳ 💡 {r['improve']}"
-                st.markdown(line)
-
-    # Reward side — the best of the run, as exemplars.
-    if not view.empty and "quality_score" in view.columns and view["quality_score"].notna().any():
-        st.divider()
-        st.subheader("🏆 Strongest messages — the best of this run")
-        st.caption("Highest reviewer quality scores. Use these as exemplars of what's working.")
-        order = {sid: f"Message {i + 1}" for i, sid in enumerate(view.reset_index(drop=True)["sim_id"])}
-        top = view.dropna(subset=["quality_score"]).copy()
-        top["Message"] = top["sim_id"].map(order)
-        top["Quality"] = top["quality_score"].round().astype("Int64").astype(str) + "/100"
-        top["Surface"] = top["surface"].replace("", "—") if "surface" in top.columns else "—"
-        top["Channel"] = top["channel"].map(humanize_channel)
-        best = top.sort_values("quality_score", ascending=False).head(5)
-        st.dataframe(best[["Message", "Quality", "Surface", "Channel"]], use_container_width=True, hide_index=True)
-
-    if not view.empty:
-        rv_all = reviews_of(view)
-        improves = [s for s in (rv_all["improve"].tolist() if not rv_all.empty else []) if isinstance(s, str) and s.strip()]
-        if improves:
-            st.divider()
-            st.subheader("💡 How to improve — what the reviewers suggested")
-            st.caption("Concrete suggestions across messages. Your team applies the fixes (via Codex/Claude); "
-                       "the harness only reviews — it never rewrites or changes the backend.")
-            for s in improves[:20]:
-                st.markdown(f"- {s}")
-
-    with st.expander("Config used for this run"):
-        st.json(cfg)
+    rv_all = reviews_of(df)
+    improves = list(dict.fromkeys(s for s in (rv_all["improve"].tolist() if not rv_all.empty else [])
+                                  if isinstance(s, str) and s.strip()))
+    if improves:
+        st.subheader("How to improve — what the reviewers suggested")
+        st.caption("Concrete suggestions gathered across the run. Your team applies the fixes; the platform only reviews.")
+        for s in improves[:15]:
+            st.markdown(f"- {s}")
 
 
 # Measured per-unit costs from the last full run (1,242 sims / 248 drafts), for the estimator.
