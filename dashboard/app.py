@@ -276,6 +276,36 @@ def page_results(store: Store) -> None:
     else:
         st.success("Nothing went wrong in this run. 🎉")
 
+    # Click into any finding to read every instance, in plain English.
+    st.markdown("**🔎 Explore a finding — click in for every instance, in plain English**")
+    fdf = find_df[find_df["sim_id"].isin(view["sim_id"])].copy() if (not find_df.empty and not view.empty) else pd.DataFrame()
+    if fdf.empty:
+        st.caption("No findings to explore in the current view.")
+    else:
+        msg_of = {sid: f"Message {i + 1}" for i, sid in enumerate(view.reset_index(drop=True)["sim_id"])}
+        surface_of = dict(zip(view["sim_id"], view["surface"].replace("", "—"))) if "surface" in view.columns else {}
+        counts = fdf["dimension"].value_counts()
+        opt_to_dim = {f"{label(d)}  ({n})": d for d, n in counts.items()}
+        pick_f = st.selectbox("Pick an issue to expand", ["—"] + list(opt_to_dim))
+        if pick_f != "—":
+            dim = opt_to_dim[pick_f]
+            st.info(f"**What this means:** {describe(dim)}")
+            sub = fdf[fdf["dimension"] == dim].copy()
+            sub["Message"] = sub["sim_id"].map(msg_of).fillna(sub["sim_id"])
+            sub["Surface"] = sub["sim_id"].map(surface_of).fillna("—") if surface_of else "—"
+            sub["Severity"] = sub["severity"].map(humanize_severity)
+            sub["Who flagged it"] = sub["source"].map(humanize_source) if "source" in sub.columns else "—"
+            tbl = sub[["Message", "Surface", "Severity", "Who flagged it", "detail"]].rename(
+                columns={"detail": "What happened (plain English)"})
+            st.dataframe(tbl, use_container_width=True, hide_index=True)
+            if "evidence" in sub.columns:
+                ev = sub[sub["evidence"].astype(str).str.strip().ne("")]
+                if not ev.empty:
+                    with st.expander(f"Evidence / excerpts ({len(ev)})"):
+                        for _, r in ev.iterrows():
+                            st.markdown(f"- **{msg_of.get(r['sim_id'], r['sim_id'])}**: {r['evidence']}")
+    st.divider()
+
     st.subheader("Results broken down")
     if not view.empty:
         rv = reviews_of(view)
@@ -369,6 +399,20 @@ def page_results(store: Store) -> None:
                 if r.get("improve"):
                     line += f"  \n  ↳ 💡 {r['improve']}"
                 st.markdown(line)
+
+    # Reward side — the best of the run, as exemplars.
+    if not view.empty and "quality_score" in view.columns and view["quality_score"].notna().any():
+        st.divider()
+        st.subheader("🏆 Strongest messages — the best of this run")
+        st.caption("Highest reviewer quality scores. Use these as exemplars of what's working.")
+        order = {sid: f"Message {i + 1}" for i, sid in enumerate(view.reset_index(drop=True)["sim_id"])}
+        top = view.dropna(subset=["quality_score"]).copy()
+        top["Message"] = top["sim_id"].map(order)
+        top["Quality"] = top["quality_score"].round().astype("Int64").astype(str) + "/100"
+        top["Surface"] = top["surface"].replace("", "—") if "surface" in top.columns else "—"
+        top["Channel"] = top["channel"].map(humanize_channel)
+        best = top.sort_values("quality_score", ascending=False).head(5)
+        st.dataframe(best[["Message", "Quality", "Surface", "Channel"]], use_container_width=True, hide_index=True)
 
     if not view.empty:
         rv_all = reviews_of(view)
