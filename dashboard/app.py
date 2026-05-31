@@ -754,9 +754,13 @@ def page_messages(store: Store) -> None:
     for base, g in df.groupby("_base", sort=False):
         worst = g.loc[g["severity"].map(lambda s: _rank.get(s, 0)).idxmax()]
         allrev = []
-        for rj in g["reviews_json"]:
+        for _, prow in g.iterrows():
+            mm = _re.search(r"-r(\d+)$", str(prow["sim_id"]))
+            passno = (int(mm.group(1)) + 1) if mm else 1  # sim-N-r0 → pass 1
             try:
-                allrev += json.loads(rj or "[]")
+                for rv in json.loads(prow["reviews_json"] or "[]"):
+                    rv["pass"] = passno
+                    allrev.append(rv)
             except Exception:
                 pass
         qs = g["quality_score"].dropna()
@@ -851,33 +855,32 @@ def page_messages(store: Store) -> None:
     st.markdown("**3 · The message Grok produced**" + (f"  ·  quality {int(q)}/100" if pd.notna(q) else ""))
     st.code((srow.get("content_text") or "").strip() or "(no draft text stored)", language=None)
 
-    st.markdown("**4 · How the models scored it** — this message was reviewed several times, rotating which "
-                "model judged which criterion, so **all five models weighed in on each of the three criteria**")
+    st.markdown("**4 · The five review passes** — each pass re-deals the three criteria to different models, so "
+                "across the passes every model plays every criterion. Each row: *which pass, which criterion "
+                "(persona), the model playing it, and its score.*")
     try:
         revs = json.loads(srow.get("reviews_json") or "[]")
     except Exception:
         revs = []
     if revs:
+        vd = {"meets": "✅ meets", "concern": "🟠 concern", "fail": "🔴 fails"}
         rdf = pd.DataFrame(revs)
-        if "score" not in rdf.columns:
-            rdf["score"] = None
-        rows = []
-        for crit, g in rdf.groupby("reviewer", sort=False):
-            sc = pd.to_numeric(g["score"], errors="coerce")
-            per = ", ".join(f"{model_label(r.get('model'))} {int(r['score']) if pd.notna(r.get('score')) else '—'}"
-                            for _, r in g.iterrows())
-            rows.append({
-                "Criterion": crit,
-                "Avg score": f"{int(round(sc.mean()))}/100" if sc.notna().any() else "—",
-                "Each model's score": per,
-                "Flagged it": int((g["verdict"] == "fail").sum()),
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-        notes = [f"**{r.get('reviewer')}** ({model_label(r.get('model'))}): {r.get('concern')}"
-                 for r in revs if (r.get("concern") or "").strip()]
+        if "pass" not in rdf.columns:
+            rdf["pass"] = 1
+        rdf = rdf.sort_values(["pass", "reviewer"])
+        ptab = pd.DataFrame([{
+            "Pass": int(r.get("pass", 1)),
+            "Criterion (persona) reviewed": r.get("reviewer") or "—",
+            "Model playing it": model_label(r.get("model")),
+            "Score": f"{int(r['score'])}/100" if pd.notna(r.get("score")) else "—",
+            "Verdict": vd.get(r.get("verdict"), "—"),
+        } for _, r in rdf.iterrows()])
+        st.dataframe(ptab, use_container_width=True, hide_index=True, height=560)
+        notes = [f"**Pass {int(r.get('pass', 1))} · {r.get('reviewer')}** ({model_label(r.get('model'))}): "
+                 f"{r.get('concern')}" for r in revs if (r.get("concern") or "").strip()]
         sugg = list(dict.fromkeys(r.get("improve") for r in revs if (r.get("improve") or "").strip()))
         if notes:
-            with st.expander(f"⚠️ Concerns raised ({len(notes)})"):
+            with st.expander(f"⚠️ Concerns raised across the passes ({len(notes)})"):
                 for n in notes[:20]:
                     st.markdown(f"- {n}")
         if sugg:
