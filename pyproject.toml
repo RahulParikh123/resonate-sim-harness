@@ -1,0 +1,23 @@
+[project]
+name = "resonate-sim-harness"
+version = "0.0.1"
+description = "Council-of-models QA / simulation harness for the Resonate campaign-messaging platform"
+requires-python = ">=3.11,<3.14"   # litellm/pydantic stack is happiest on 3.11–3.13
+
+# The deterministic scorer + demo run on the stdlib alone (no install needed).
+# These deps are for the live runner layers (added next).
+dependencies = [
+    "httpx>=0.27",
+    "litellm>=1.50",
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+    "tenacity>=8.2",
+]
+
+[project.optional-dependencies]
+cluster = ["sentence-transformers>=3.0", "hdbscan>=0.8"]   # flag clustering (Phase 3)
+dashboard = ["streamlit>=1.38"]                            # triage UI (Phase 3)
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = false

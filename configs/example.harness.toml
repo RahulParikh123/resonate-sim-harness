@@ -1,0 +1,108 @@
+# ════════════════════════════════════════════════════════════════════════════
+#  Resonate Simulation Harness — run configuration
+#
+#  THIS FILE IS THE SET OF HUMAN GATES. Edit it, commit it to git, re-run it.
+#  Each named config = one reproducible simulation your cofounders can share.
+#  Copy this to e.g. configs/indiana-senate.toml and tweak per campaign.
+#
+#  Run it:   python3 scripts/run.py --config configs/example.harness.toml
+# ════════════════════════════════════════════════════════════════════════════
+
+name = "default-smoke"
+description = "First smoke run — email + SMS, deterministic + platform layers."
+
+# ── GATE: target backend ─────────────────────────────────────────────────────
+[target]
+base_url  = "http://localhost:8000"            # the local/staging Resonate backend
+dev_email = "harness-operator@example.com"     # X-Dev-User-Email → throwaway org+project
+bearer_token = ""                              # only set to intentionally target a prod host
+
+# ── GATE: the council (simulated operators) ──────────────────────────────────
+[council]
+models = ["council/claude", "council/gpt"]     # names map to litellm.config.yaml
+personas = [
+  "scrappy state-house challenger — rushed, sloppy",
+  "well-funded incumbent — cautious, on-message",
+  "PAC operative — adversarial, oppo-hungry",
+]
+
+# ── GATE: the review council ─────────────────────────────────────────────────
+# Each reviewer PROXIES a point of view — mostly voters the message is trying to
+# reach, plus a craft coach and a legal guardrail. They read Grok's draft, score it
+# 0-100 from their POV, flag concerns, and suggest one improvement. They never
+# rewrite it. Edit these freely — this is who the panel speaks for.
+[[reviewers]]
+name = "Target-segment voter"
+model = "judge/sonnet"
+criteria = "You ARE the specific voter group this message is tailored to. Does it actually speak to our lives, language, and values — or is it a stereotype / generic pander? If tailoring is claimed, verify it genuinely lands for us."
+
+[[reviewers]]
+name = "Skeptical swing voter"
+model = "judge/gpt"
+criteria = "Undecided, time-poor, distrusts politicians. Does this move you or read as spin and cliché? Low tolerance for cringe and over-claiming; reward concrete, believable, human messages with one clear point."
+
+[[reviewers]]
+name = "Energized base voter"
+model = "judge/gemini"
+criteria = "Committed supporter who wants to be fired up and share this. Does it have real energy and a clear ask, or is it limp? Tolerates sharp tone; flags anything mealy-mouthed or off-message."
+
+[[reviewers]]
+name = "Hostile / opposition reader"
+model = "judge/gpt"
+criteria = "An opponent's tracker hunting for ammunition. What could backfire, be clipped out of context, offend a group, or be attacked as false or extreme? Flag the liabilities."
+
+[[reviewers]]
+name = "Message-quality coach"
+model = "judge/sonnet"
+criteria = "A top political copy chief. Judge purely on craft: is this the BEST possible version? Clarity, hook, single ask, memorability, length-fit. Always give one concrete way to make it better."
+
+[[reviewers]]
+name = "Compliance & legal guardrail"
+model = "judge/gemini"
+criteria = "A campaign lawyer — a guardrail, not the main goal. Flag only missing/weak 'Paid for by' disclaimers, unverified factual or financial claims, and clear FEC/FCC/TCPA exposure."
+
+# ── GATE: the simulation matrix ──────────────────────────────────────────────
+# cells = models × personas × channels × intents × repeats, capped at max_sims.
+[matrix]
+channels = ["email", "sms"]                    # of: email sms speech mail radio tv social
+intents  = ["fresh_draft", "revision", "discussion"]
+repeats_per_cell = 1
+max_sims = 50
+
+# ── GATE: budget ceilings (USD, hard kill-switches) ──────────────────────────
+[budgets]
+council_usd = 30.0           # council + judge spend (enforced by LiteLLM)
+backend_draft_usd = 15.0     # Resonate's own draft spend (summed from spend_events)
+
+# ── How results are surfaced ─────────────────────────────────────────────────
+[flagging]
+cluster = true
+min_severity = "low"         # low | medium | high | critical
+
+[output]
+db_path = "runs/harness.db"
+
+# ════════════════════════════════════════════════════════════════════════════
+#  GATE: THE RUBRIC — what counts as a failure. Toggle, reweight, retune.
+# ════════════════════════════════════════════════════════════════════════════
+[rubric]
+# deterministic numeric thresholds
+sms_max_chars = 320
+broadcast_slot_seconds = 30      # TV/radio ad slot; ~2.5 words/sec read-time
+words_per_sec = 2.5
+speech_min_words = 120
+# platform stance-drift bands (0–1, from the backend's stance_drift_score)
+stance_drift_warn = 0.50
+stance_drift_high = 0.75
+
+# Objective checks on Grok's draft. enabled=false drops the check; severity overrides the tier.
+# (The subjective side — tone, rhetoric, risk, on-message — is handled by the reviewers above.)
+[rubric.dimensions]
+scaffolding_leak            = { enabled = true,  severity = "high" }    # rule check
+empty_or_refused            = { enabled = true,  severity = "high" }    # rule check
+fabricated_operational_info = { enabled = true,  severity = "high" }    # rule check
+chat_routing                = { enabled = true,  severity = "high" }    # rule check
+length_contract             = { enabled = true }                        # rule check
+markdown_in_plaintext       = { enabled = true,  severity = "medium" }  # rule check
+compliance_phrasing         = { enabled = true,  severity = "medium" }  # rule check
+stance_drift                = { enabled = true }                        # platform signal

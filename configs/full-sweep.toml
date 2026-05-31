@@ -1,0 +1,47 @@
+# PRESET: full sweep — comprehensive pre-deployment pass.
+# All 7 channels × all 4 request types, repeated, up to 200 messages, full review council.
+name = "full-sweep"
+description = "Comprehensive pass — every channel and request type, the full review council, up to 200 messages."
+
+[target]
+base_url = "http://localhost:8000"
+dev_email = "harness-operator@example.com"
+
+[council]
+models = ["council/claude", "council/gpt", "council/gemini"]
+
+# Reviewers omitted → uses the full default voter-POV council.
+
+[matrix]
+channels = ["email", "sms", "speech", "mail", "radio", "tv", "social"]
+intents = ["fresh_draft", "revision", "discussion", "edge_case"]
+repeats_per_cell = 2
+max_sims = 200
+
+[budgets]
+council_usd = 60.0
+backend_draft_usd = 30.0
+
+[flagging]
+cluster = true
+
+[output]
+db_path = "runs/harness.db"
+
+[rubric]
+sms_max_chars = 320
+broadcast_slot_seconds = 30
+words_per_sec = 2.5
+speech_min_words = 120
+stance_drift_warn = 0.50
+stance_drift_high = 0.75
+
+[rubric.dimensions]
+scaffolding_leak            = { enabled = true, severity = "high" }
+empty_or_refused            = { enabled = true, severity = "high" }
+fabricated_operational_info = { enabled = true, severity = "high" }
+chat_routing                = { enabled = true, severity = "high" }
+length_contract             = { enabled = true }
+markdown_in_plaintext       = { enabled = true, severity = "medium" }
+compliance_phrasing         = { enabled = true, severity = "medium" }
+stance_drift                = { enabled = true }

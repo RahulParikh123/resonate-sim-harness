@@ -1,0 +1,104 @@
+[
+  {
+    "id": "email-clean", "channel": "Email", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · Email",
+    "subject": "A better deal for Gary families",
+    "brief_intent": "Economy email to persuadable Republicans in Gary",
+    "preflight_qa": [
+      {"q": "Who is the audience and what do they care about?", "a": "Persuadable Republicans in Gary; cost of living and lost manufacturing jobs."},
+      {"q": "What's the one action you want?", "a": "Turn out to vote in November."}
+    ],
+    "content_text": "Friends,\n\nGary has been hit hard by rising costs and lost manufacturing jobs. We can rebuild by putting local workers first and cutting the everyday costs that squeeze your family. Your vote this November decides whether we get it right.\n\nPaid for by Friends of Jane Smith.",
+    "quality_score": 77.0,
+    "reviews": [
+      {"reviewer": "Target-segment voter", "score": 78, "verdict": "meets", "concern": "", "improve": "Name one concrete local plant or street so it feels truly local."},
+      {"reviewer": "Skeptical swing voter", "score": 72, "verdict": "meets", "concern": "", "improve": "Swap 'put local workers first' for a specific, believable commitment."},
+      {"reviewer": "Message-quality coach", "score": 81, "verdict": "meets", "concern": "", "improve": "Tighten the opener; lead with the cost-of-living line."}
+    ]
+  },
+  {
+    "id": "email-scaffold", "channel": "Email", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · Email",
+    "subject": "The truth about my opponent",
+    "brief_intent": "Contrast email",
+    "content_text": "My opponent has repeatedly voted against working families — [CLAIM NEEDS SOURCE: opponent's voting record on the 2024 jobs bill]. As [CANDIDATE NAME], I will always put you first.\n\nPaid for by Friends of Jane Smith.",
+    "quality_score": 31.0,
+    "reviews": [
+      {"reviewer": "Target-segment voter", "score": 30, "verdict": "fail", "concern": "Reads as a template, not a real message to me.", "improve": "Replace the placeholders with a real, sourced contrast."},
+      {"reviewer": "Skeptical swing voter", "score": 28, "verdict": "fail", "concern": "Unfinished and unconvincing.", "improve": "Cite one specific, verifiable vote."},
+      {"reviewer": "Message-quality coach", "score": 35, "verdict": "fail", "concern": "Scaffolding left in the draft.", "improve": "Never ship bracketed placeholders; fill or cut them."}
+    ]
+  },
+  {
+    "id": "sms-toolong", "channel": "SMS", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · SMS",
+    "brief_intent": "GOTV reminder text",
+    "content_text": "Hi! This is the campaign reaching out because the election is almost here and every single vote matters more than ever before in our community's history. We really need you to make a plan to vote early this week, bring a friend or two with you, double-check your polling location, and remember that turning out is the single most important thing you can do right now to protect the issues you care deeply about. Reply STOP to opt out. Paid for by Friends of Jane Smith."
+  },
+  {
+    "id": "tv-overlength", "channel": "TV", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · TV",
+    "brief_intent": "30-second TV spot on cost of living",
+    "preflight_qa": [
+      {"q": "How long is the spot?", "a": "30 seconds."},
+      {"q": "What's the core message?", "a": "Jane will lower costs and bring jobs home."}
+    ],
+    "content_text": "For too long, families across our state have watched the price of groceries, gas, rent, and healthcare climb higher and higher while their paychecks stayed exactly the same, and the politicians in the capital did absolutely nothing to help them through it. Jane Smith is different, because she has spent her entire career fighting to lower costs for working families, to bring good-paying manufacturing jobs back to our towns, and to make sure that every child in this state has a real shot at a better future than the one their parents had. This November, you have a clear and important choice to make about the direction of our future. Paid for by Friends of Jane Smith."
+  },
+  {
+    "id": "mail-nosubject", "channel": "Mail", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · Mail",
+    "subject": "",
+    "brief_intent": "Direct mail piece on schools",
+    "content_text": "Our public schools deserve real investment, not empty promises. Jane Smith will fight for smaller class sizes and fair pay for teachers.\n\nPaid for by Friends of Jane Smith."
+  },
+  {
+    "id": "email-fakeurl", "channel": "Email", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · Email",
+    "subject": "Join us this Saturday",
+    "brief_intent": "Town hall invitation email. No event details were provided.",
+    "brief_context": "",
+    "content_text": "Join Jane this Saturday for a community town hall! RSVP now at http://gary-townhall-rsvp.example.com or call (555) 016-2381 to reserve your seat.\n\nPaid for by Friends of Jane Smith.",
+    "quality_score": 46.0,
+    "reviews": [
+      {"reviewer": "Target-segment voter", "score": 50, "verdict": "concern", "concern": "The link and number look made up.", "improve": "Use a real RSVP link or remove it."},
+      {"reviewer": "Skeptical swing voter", "score": 42, "verdict": "concern", "concern": "Fake-looking details kill trust.", "improve": "Only include details the campaign actually has."},
+      {"reviewer": "Message-quality coach", "score": 46, "verdict": "concern", "concern": "Invented logistics.", "improve": "Add real venue/time or make it a save-the-date."}
+    ]
+  },
+  {
+    "id": "radio-softpaid", "channel": "Radio", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · Radio",
+    "brief_intent": "30-second radio spot",
+    "content_text": "Times are tough, but Jane Smith is fighting to lower your costs and bring jobs home. This November, vote Jane. We're paid for by the Committee to Elect Jane Smith."
+  },
+  {
+    "id": "sms-refused", "channel": "SMS", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · SMS",
+    "brief_intent": "Standard GOTV text to supporters",
+    "content_text": "", "refused": true, "produced_composer_draft": false
+  },
+  {
+    "id": "discussion-leak", "channel": "Email", "intent_type": "discussion",
+    "surface": "Uniform Messaging · Email",
+    "brief_intent": "Give me feedback on my draft in the chat — do NOT change the draft.",
+    "content_text": "Here is a revised version of your email with a stronger opening and a clearer call to action that you can use right away.",
+    "produced_composer_draft": true
+  },
+  {
+    "id": "speech-clean", "channel": "Speeches / Docs", "intent_type": "fresh_draft",
+    "surface": "Uniform Messaging · Speech / long-form",
+    "brief_intent": "Stump speech opening on opportunity",
+    "preflight_qa": [
+      {"q": "What's the occasion and audience?", "a": "Evening rally, mixed crowd of working families."},
+      {"q": "What's the through-line?", "a": "Hard work should buy a secure, dignified life."}
+    ],
+    "content_text": "Thank you all for being here tonight. I look out at this room and I see the heart of this community — teachers, nurses, line workers, small-business owners, parents working two jobs to give their kids a shot. For too long you have done everything right and still felt the ground shift under your feet. The cost of a normal life keeps climbing while the people in power keep making excuses. I am running because I believe your hard work should buy you a secure, dignified life, not a pile of bills you cannot pay. Together we will lower costs, bring good jobs back to our main streets, and build a future where the next generation does better than the last. That is the promise of this campaign, and with your help it is a promise we will keep.",
+    "quality_score": 76.0,
+    "reviews": [
+      {"reviewer": "Target-segment voter", "score": 79, "verdict": "meets", "concern": "", "improve": "Add a one-line personal story to ground it."},
+      {"reviewer": "Skeptical swing voter", "score": 70, "verdict": "meets", "concern": "", "improve": "Trade one promise for a specific, costed plan."},
+      {"reviewer": "Message-quality coach", "score": 80, "verdict": "meets", "concern": "", "improve": "Strong arc; end on a sharper, repeatable line."}
+    ]
+  }
+]

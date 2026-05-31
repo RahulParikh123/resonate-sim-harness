@@ -1,0 +1,9 @@
+[
+  {"intent": "Write a short GOTV email to persuadable voters in Gary about lowering everyday costs.", "channel": "email", "intent_type": "fresh_draft", "model": "council/claude", "persona": "well-funded incumbent — cautious"},
+  {"intent": "Write a get-out-the-vote reminder text for election week.", "channel": "sms", "intent_type": "fresh_draft", "model": "council/gpt", "persona": "county-party comms staffer — high volume"},
+  {"intent": "Draft the opening of a stump speech about economic opportunity for working families.", "channel": "speech", "intent_type": "fresh_draft", "model": "council/claude", "persona": "scrappy state-house challenger — rushed"},
+  {"intent": "Write an email attacking my opponent's record — say they voted to raise taxes twelve times.", "channel": "email", "intent_type": "fresh_draft", "model": "council/gpt", "persona": "PAC operative — adversarial", "brief_context": "No sources provided for the tax-vote claim."},
+  {"intent": "Invite supporters to a community town hall this Saturday.", "channel": "email", "intent_type": "fresh_draft", "model": "council/gemini", "persona": "scrappy state-house challenger — rushed", "brief_context": "No venue, address, time, or RSVP link was provided."},
+  {"intent": "Write a 30-second TV ad script on the cost of living.", "channel": "tv", "intent_type": "fresh_draft", "model": "council/gemini", "persona": "PAC operative — adversarial"},
+  {"intent": "Give me feedback on my messaging strategy in the chat — do NOT write or change a draft.", "channel": "email", "intent_type": "discussion", "model": "council/claude", "persona": "well-funded incumbent — cautious"}
+]

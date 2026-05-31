@@ -1,0 +1,35 @@
+# LiteLLM gateway for the COUNCIL (simulated operators) + JUDGE panel.
+# This is the only place provider auth + hard spend caps for the harness live.
+# It is SEPARATE from Resonate's own internal LLM stack (that spend is tracked
+# via the backend's spend_events table).
+#
+# Model names below are PLACEHOLDERS pending the "council roster" gate — confirm
+# the exact models/tiers and Poozed Man will finalize them.
+
+model_list:
+  # ── Council: simulated operators (cheap tiers — short JSON briefs) ──
+  - model_name: council/claude
+    litellm_params: { model: anthropic/claude-haiku-4-5, api_key: os.environ/ANTHROPIC_API_KEY }
+  - model_name: council/gpt
+    litellm_params: { model: openai/gpt-5-mini, api_key: os.environ/OPENAI_API_KEY }
+  - model_name: council/gemini
+    litellm_params: { model: gemini/gemini-2.5-flash, api_key: os.environ/GEMINI_API_KEY }
+  - model_name: council/kimi
+    litellm_params: { model: moonshot/kimi-k2, api_key: os.environ/MOONSHOT_API_KEY }
+  - model_name: council/grok
+    litellm_params: { model: xai/grok-4, api_key: os.environ/XAI_API_KEY }
+
+  # ── Judge panel: mid tiers, diverse labs, author-exclusion enforced in code ──
+  - model_name: judge/sonnet
+    litellm_params: { model: anthropic/claude-sonnet-4-5, api_key: os.environ/ANTHROPIC_API_KEY }
+  - model_name: judge/gpt
+    litellm_params: { model: openai/gpt-5, api_key: os.environ/OPENAI_API_KEY }
+  - model_name: judge/gemini
+    litellm_params: { model: gemini/gemini-2.5-pro, api_key: os.environ/GEMINI_API_KEY }
+
+litellm_settings:
+  max_budget: 30          # hard USD ceiling across all council+judge calls
+  budget_duration: 30d
+  num_retries: 2
+  request_timeout: 120
+  drop_params: true
