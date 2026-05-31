@@ -133,24 +133,35 @@ async def review_draft(sim: SimResult, reviewers: list[Reviewer], budget: Budget
     return [r for r in await asyncio.gather(*[one(rv) for rv in reviewers]) if r]
 
 
+WILD_MISS_SCORE = 25  # a score this low means the reviewer judged the draft wildly off its criterion
+
+
 def reviews_to_findings(reviews: list[dict]) -> list[Finding]:
-    """Only the GUARDRAIL axis produces a flag — that's the real ship-blocker (a safety/
-    backfire risk). The reward axes (power, tailoring) drive the quality SCORE, not flags:
-    a merely weak-but-safe message is low-scoring, not 'flagged.' This keeps the flagged
-    set to the genuinely serious minority instead of nearly every draft."""
+    """Flag the genuinely serious so nothing real slips through:
+      • a GUARDRAIL fail → CRITICAL (a safety/backfire ship-blocker), and
+      • ANY axis the reviewer judged WILDLY off its criterion — a 'fail' verdict or a
+        score ≤ 25 — → HIGH (e.g. a message that completely misses its target group, or
+        a powerless draft), even if the guardrail passed.
+    A soft 'concern' is a note (MEDIUM), not a flag; a merely-mediocre score isn't flagged
+    (the quality score already reflects that). This catches the real misses without
+    flagging nearly every draft."""
     out: list[Finding] = []
     for r in reviews:
-        if r.get("role") != "guardrail":
-            continue
-        verdict = r.get("verdict", "meets")
-        if verdict == "fail":
-            sev = Severity.CRITICAL
+        role, verdict = r.get("role", "reward"), r.get("verdict", "meets")
+        score = r.get("score")
+        wildly_low = isinstance(score, (int, float)) and score <= WILD_MISS_SCORE
+        name = r.get("reviewer", "A reviewer")
+        sc = f" (scored {int(score)}/100)" if isinstance(score, (int, float)) else ""
+        if role == "guardrail" and verdict == "fail":
+            out.append(Finding(REVIEW_DIMENSION, Severity.CRITICAL, False,
+                               f"Safety guardrail: {r.get('concern') or 'flagged a real risk'}", source=name))
+        elif verdict == "fail" or wildly_low:
+            out.append(Finding(REVIEW_DIMENSION, Severity.HIGH, False,
+                               f"{name}: wildly off this criterion — {r.get('concern') or 'far below standard'}{sc}",
+                               source=name))
         elif verdict == "concern":
-            sev = Severity.MEDIUM  # a soft concern is a note, not a flag
-        else:
-            continue
-        out.append(Finding(REVIEW_DIMENSION, sev, False,
-                           f"Safety guardrail: {r.get('concern') or 'flagged a risk'}", source=r["reviewer"]))
+            out.append(Finding(REVIEW_DIMENSION, Severity.MEDIUM, False,
+                               f"{name}: {r.get('concern') or 'raised a concern'}", source=name))
     return out
 
 
