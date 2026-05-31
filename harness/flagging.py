@@ -22,6 +22,7 @@ class SimVerdict:
     persona: str = ""
     surface: str = ""
     target_segment: str = ""
+    content_text: str = ""   # the actual draft Grok produced, so it's viewable in the dashboard
     quality_score: float | None = None
     reviews: list = field(default_factory=list)
     preflight_qa: list = field(default_factory=list)

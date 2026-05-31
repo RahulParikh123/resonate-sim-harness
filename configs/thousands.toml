@@ -52,12 +52,14 @@ speech_min_words = 120
 stance_drift_warn = 0.50
 stance_drift_high = 0.75
 
+# Severity sets what counts as "flagged" (critical/high) vs a minor note (low).
+# Only true ship-blockers flag; fixable nits (disclaimer wording, length, markdown) are notes.
 [rubric.dimensions]
-scaffolding_leak            = { enabled = true, severity = "high" }
-empty_or_refused            = { enabled = true, severity = "high" }
-fabricated_operational_info = { enabled = true, severity = "high" }
-chat_routing                = { enabled = true, severity = "high" }
-length_contract             = { enabled = true }
-markdown_in_plaintext       = { enabled = true, severity = "medium" }
-compliance_phrasing         = { enabled = true, severity = "medium" }
-stance_drift                = { enabled = true }
+scaffolding_leak            = { enabled = true, severity = "high" }      # leftover "[INSERT NAME]" etc.
+empty_or_refused            = { enabled = true, severity = "critical" }  # no usable draft
+fabricated_operational_info = { enabled = true, severity = "critical" }  # invented link/phone/RSVP
+chat_routing                = { enabled = true, severity = "high" }      # changed the draft when only asked to chat
+length_contract             = { enabled = true, severity = "low" }       # note: trim/expand for the channel
+markdown_in_plaintext       = { enabled = true, severity = "low" }       # note: strip markdown
+compliance_phrasing         = { enabled = true, severity = "low" }       # note: tighten "Paid for by"
+stance_drift                = { enabled = true, severity = "medium" }

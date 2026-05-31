@@ -134,18 +134,23 @@ async def review_draft(sim: SimResult, reviewers: list[Reviewer], budget: Budget
 
 
 def reviews_to_findings(reviews: list[dict]) -> list[Finding]:
-    """Turn concerns/fails into flags. A guardrail (safety) issue outranks a reward-axis one."""
+    """Only the GUARDRAIL axis produces a flag — that's the real ship-blocker (a safety/
+    backfire risk). The reward axes (power, tailoring) drive the quality SCORE, not flags:
+    a merely weak-but-safe message is low-scoring, not 'flagged.' This keeps the flagged
+    set to the genuinely serious minority instead of nearly every draft."""
     out: list[Finding] = []
     for r in reviews:
-        verdict = r.get("verdict", "meets")
-        if verdict == "meets":
+        if r.get("role") != "guardrail":
             continue
-        if r.get("role") == "guardrail":
-            sev = Severity.CRITICAL if verdict == "fail" else Severity.HIGH
+        verdict = r.get("verdict", "meets")
+        if verdict == "fail":
+            sev = Severity.CRITICAL
+        elif verdict == "concern":
+            sev = Severity.MEDIUM  # a soft concern is a note, not a flag
         else:
-            sev = Severity.HIGH if verdict == "fail" else Severity.MEDIUM
+            continue
         out.append(Finding(REVIEW_DIMENSION, sev, False,
-                           f"{r['reviewer']}: {r.get('concern') or 'flagged an issue'}", source=r["reviewer"]))
+                           f"Safety guardrail: {r.get('concern') or 'flagged a risk'}", source=r["reviewer"]))
     return out
 
 

@@ -215,6 +215,7 @@ def page_results(store: Store) -> None:
         st.warning("No runs yet. Generate one:  `python3 scripts/run.py --config configs/example.harness.toml`")
         return
 
+    runs = sorted(runs, key=lambda r: r["id"], reverse=True)  # newest run first (default selection)
     run_labels = {f"Run {r['id']} · {humanize_mode(r['mode'])} · {r['sim_count']} messages": r for r in runs}
     run = run_labels[st.sidebar.selectbox("Run", list(run_labels))]
     sims, findings, clusters = load(run["id"])
@@ -238,14 +239,17 @@ def page_results(store: Store) -> None:
 
     cfg = json.loads(run.get("config") or "{}")
     total = len(view)
-    flagged = int((view["severity"] != "pass").sum()) if total else 0
+    sev = view["severity"] if total else pd.Series(dtype=str)
+    must_fix = int((sev == "critical").sum())   # ship-blockers: guardrail fail / empty / fabricated
+    defects = int((sev == "high").sum())          # fixable defects: leftover placeholders, chat-routing
+    flagged = must_fix + defects
     avg_q = view["quality_score"].dropna() if total and "quality_score" in view.columns else pd.Series(dtype=float)
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Messages", total)
-    c2.metric("Flagged", flagged)
-    c3.metric("Clean", f"{round(100 * (total - flagged) / total) if total else 0}%")
+    c2.metric("🚩 Must-fix", must_fix, f"{round(100 * must_fix / total) if total else 0}% of run", delta_color="off")
+    c3.metric("Fixable defects", defects, f"{round(100 * defects / total) if total else 0}% of run", delta_color="off")
     c4.metric("Avg quality", f"{round(avg_q.mean())}/100" if len(avg_q) else "—")
-    c5.metric("Total cost", f"${cfg.get('total_usd', cfg.get('council_spent_usd', 0.0)):.4f}")
+    c5.metric("Total cost", f"${cfg.get('total_usd', cfg.get('council_spent_usd', 0.0)):.2f}")
     st.divider()
 
     st.markdown("**💵 What this run cost**")
@@ -331,8 +335,11 @@ def page_results(store: Store) -> None:
                 rb = rv.groupby("reviewer").agg(avg=("score", "mean"), Concerns=("flag", "sum")).reset_index()
                 rb["Avg score"] = rb["avg"].round().astype("Int64")
                 rb = rb.rename(columns={"reviewer": "Job"})[["Job", "Avg score", "Concerns"]].sort_values("Avg score")
-                st.bar_chart(rb.set_index("Job")["Avg score"], height=200)
-                st.dataframe(rb, use_container_width=True, hide_index=True)
+                # Axis scores cluster closely, so a 0-based bar chart looks flat/broken — show metrics.
+                mcols = st.columns(len(rb)) if len(rb) else [st]
+                for col, (_, row) in zip(mcols, rb.iterrows()):
+                    col.metric(row["Job"], f"{int(row['Avg score'])}/100",
+                               f"{int(row['Concerns'])} concerns", delta_color="off")
         with col_model:
             st.markdown("**By model** — each rotates across the 3 axes")
             if rv.empty or "model" not in rv or rv["model"].isna().all():
@@ -383,6 +390,14 @@ def page_results(store: Store) -> None:
         if pick != "—":
             sid = id_map[pick]
             srow = view[view["sim_id"] == sid].iloc[0]
+            seg = srow.get("target_segment") or "—"
+            q = srow.get("quality_score")
+            st.markdown(f"**{pick}** · {humanize_channel(srow['channel'])} · {humanize_intent(srow['intent_type'])} · "
+                        f"target: **{seg}** · result: {humanize_severity(srow['severity'])}"
+                        + (f" · quality {int(q)}/100" if pd.notna(q) else ""))
+            st.markdown("**📄 The message Grok produced**")
+            body = (srow.get("content_text") or "").strip()
+            st.code(body if body else "(no draft text stored for this message)", language=None)
             try:
                 qa = json.loads(srow.get("preflight_qa_json") or "[]")
             except Exception:
