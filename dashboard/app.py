@@ -470,13 +470,48 @@ def page_results(store: Store) -> None:
         st.json(cfg)
 
 
+# Measured per-unit costs from the last full run (1,242 sims / 248 drafts), for the estimator.
+_RATE_DRAFT_PREFLIGHT = 0.0535   # xAI Grok, per distinct draft, with the clarifying-question flow
+_RATE_DRAFT_PLAIN = 0.027        # xAI Grok, per draft, no preflight
+_RATE_REVIEW = {                 # per simulation, by provider (3-criteria council, fast model variants)
+    "xAI — Grok (reviewer seat)": 0.00156,
+    "Anthropic — Claude": 0.00239,
+    "Google — Gemini": 0.00190,
+    "Moonshot — Kimi": 0.00019,
+    "OpenAI — GPT": 0.00011,
+}
+
+
+def cost_estimator() -> None:
+    st.markdown("**💵 Estimate the cost before you run** — based on the last full run's measured per-message rates.")
+    e1, e2, e3 = st.columns(3)
+    drafts = int(e1.number_input("Distinct messages to draft", min_value=10, max_value=5000, value=250, step=10))
+    rots = int(e2.number_input("Reviews per message (rotations)", min_value=1, max_value=5, value=5))
+    preflight = e3.checkbox("Clarifying-question flow on", value=True)
+    sims = drafts * rots
+    draft_cost = drafts * (_RATE_DRAFT_PREFLIGHT if preflight else _RATE_DRAFT_PLAIN)
+    rows = [{"Provider": "xAI — Grok (drafting every message)", "Estimated cost": f"${draft_cost:,.2f}"}]
+    total = draft_cost
+    for prov, rate in _RATE_REVIEW.items():
+        c = sims * rate
+        total += c
+        rows.append({"Provider": prov, "Estimated cost": f"${c:,.2f}"})
+    st.caption(f"≈ **{sims:,} simulations** from {drafts:,} drafts. Each provider bills to your own keys.")
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.success(f"**Estimated total ≈ ${total:,.2f}**  ·  ~${total / max(sims, 1):.4f} per simulation. "
+               "The hard caps in your config stop the run before it can ever exceed your limits.")
+    st.divider()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURE  (point-and-click criteria editor — writes a .toml)
 # ══════════════════════════════════════════════════════════════════════════════
 def page_configure() -> None:
-    st.title("⚙️ Configure criteria")
-    st.caption("Edit a simulation config without touching code. Save it, then run "
-               "`scripts/run_live.py --config configs/<name>.toml`.")
+    st.title("⚙️ Change settings & re-run")
+    st.caption("Adjust what's tested and re-run it — no code. Estimate the cost first, then edit the config "
+               "below and save it; run it with `scripts/run_live.py --config configs/<name>.toml --council "
+               "--preflight --review --publish`.")
+    cost_estimator()
 
     files = sorted(p.name for p in CONFIG_DIR.glob("*.toml"))
     name_map = {}
