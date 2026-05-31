@@ -746,15 +746,22 @@ def page_messages(store: Store) -> None:
     for c in ("surface", "target_segment", "brief_intent", "content_text", "preflight_qa_json", "reviews_json"):
         if c not in df.columns:
             df[c] = ""
-    # Collapse the rotation passes → ONE row per distinct message. Each draft was reviewed
-    # several times (rotating which model judged which criterion); we merge all of those
-    # model-judgments into the single message, take its worst severity, and average its quality.
+    # Collapse the rotation passes → ONE row per distinct message. The severity is by CONSENSUS,
+    # not the worst single pass: a flag only sticks when models AGREE across the rotation. So a
+    # message is must-fix (critical) only if the guardrail failed in a majority of passes (≥3 of 5),
+    # needs-review (high) if a criterion was failed by ≥2 models or the guardrail flagged once — plus
+    # any hard objective defect (leftover placeholder, empty draft, fabricated detail), which is
+    # content-based and definitive. This keeps the flagged set honest, matching the "models agree" idea.
     import re as _re
     df["_base"] = df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
     _rank = {"critical": 4, "high": 3, "medium": 2, "low": 1, "pass": 0}
+    _GUARD = "Safety guardrail"
+    if not find_df.empty:  # collapse finding ids to base first, for per-message objective lookup
+        find_df = find_df.copy()
+        find_df["sim_id"] = find_df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
     _rows = []
     for base, g in df.groupby("_base", sort=False):
-        worst = g.loc[g["severity"].map(lambda s: _rank.get(s, 0)).idxmax()]
+        first = g.iloc[0]  # content/surface/target/etc. are identical across a message's passes
         allrev = []
         for _, prow in g.iterrows():
             mm = _re.search(r"-r(\d+)$", str(prow["sim_id"]))
@@ -765,20 +772,35 @@ def page_messages(store: Store) -> None:
                     allrev.append(rv)
             except Exception:
                 pass
+        guard_fails = sum(1 for rv in allrev if rv.get("verdict") == "fail"
+                          and (rv.get("role") == "guardrail" or rv.get("reviewer") == _GUARD))
+        crit_fails: dict = {}
+        for rv in allrev:
+            if rv.get("verdict") == "fail" and not (rv.get("role") == "guardrail" or rv.get("reviewer") == _GUARD):
+                crit_fails[rv.get("reviewer")] = crit_fails.get(rv.get("reviewer"), 0) + 1
+        if guard_fails >= 3:
+            rev_sev = "critical"
+        elif guard_fails >= 1 or (crit_fails and max(crit_fails.values()) >= 2):
+            rev_sev = "high"
+        else:
+            rev_sev = "pass"
+        obj_sev = "pass"
+        if not find_df.empty:
+            obj = find_df[(find_df["sim_id"] == base) & (find_df["dimension"] != "reviewer_concern")]
+            if not obj.empty:
+                obj_sev = max(obj["severity"], key=lambda s: _rank.get(s, 0))
+        sev = rev_sev if _rank.get(rev_sev, 0) >= _rank.get(obj_sev, 0) else obj_sev
         qs = g["quality_score"].dropna()
         _rows.append({
-            "sim_id": base, "channel": worst["channel"], "intent_type": worst["intent_type"],
-            "surface": worst["surface"], "target_segment": worst["target_segment"],
-            "brief_intent": worst["brief_intent"], "content_text": worst["content_text"],
-            "preflight_qa_json": worst["preflight_qa_json"], "severity": worst["severity"],
+            "sim_id": base, "channel": first["channel"], "intent_type": first["intent_type"],
+            "surface": first["surface"], "target_segment": first["target_segment"],
+            "brief_intent": first["brief_intent"], "content_text": first["content_text"],
+            "preflight_qa_json": first["preflight_qa_json"], "severity": sev,
             "quality_score": round(qs.mean(), 1) if len(qs) else None,
             "reviews_json": json.dumps(allrev),
         })
     df = pd.DataFrame(_rows).reset_index(drop=True)
     df["Message"] = [f"Message {i + 1}" for i in range(len(df))]
-    if not find_df.empty:  # collapse finding ids too, for the per-message reason lookup
-        find_df = find_df.copy()
-        find_df["sim_id"] = find_df["sim_id"].astype(str).map(lambda s: _re.sub(r"-r\d+$", "", s))
 
     st.sidebar.subheader("Filter")
     only_flag = st.sidebar.checkbox("Only flagged (must-fix + review)")
@@ -809,14 +831,24 @@ def page_messages(store: Store) -> None:
 
     table = pd.DataFrame({
         "Message": v["Message"],
+        "Flagged?": v["severity"].map(lambda s: _FLAG.get(s, "—")),
         "Where (Resonate surface)": v["surface"].replace("", "—"),
         "What was asked": v["brief_intent"].map(_short),
         "Target voters": v["target_segment"].replace("", "—"),
         "What Grok wrote": v["content_text"].map(_short),
-        "Flagged?": v["severity"].map(lambda s: _FLAG.get(s, "—")),
         "Quality": v["quality_score"].map(lambda x: f"{int(x)}/100" if pd.notna(x) else "—"),
     })
-    st.dataframe(table, use_container_width=True, hide_index=True, height=430)
+    if sort_by.startswith("Flagged"):
+        st.caption("🚩 **Sorted flagged-first** — must-fix on top, then needs-review, then clean. Rows are "
+                   "tinted by status: red = must-fix, amber = needs-review, green = clean.")
+
+    def _tint(row):
+        f = row["Flagged?"]
+        bg = ("background-color: rgba(255,80,80,0.22)" if "Must-fix" in f
+              else "background-color: rgba(255,175,0,0.16)" if "Review" in f
+              else "background-color: rgba(70,200,120,0.13)" if "Clean" in f else "")
+        return [bg] * len(row)
+    st.dataframe(table.style.apply(_tint, axis=1), use_container_width=True, hide_index=True, height=430)
 
     idmap = dict(zip(v["Message"], v["sim_id"]))
     pick = st.selectbox("🔍 Open a message for the full story", ["—"] + list(v["Message"]))
